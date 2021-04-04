@@ -1061,9 +1061,10 @@ class GraspObjectUR5(UR5Env):
    
 
 class GraspObjectUR5Sim(GraspObjectUR5, Simulation):
-    cmd = "roslaunch ur_robot_server ur5Robotiq85_sim_robot_server.launch \
+    cmd = "roslaunch ur_robot_server ur5Robotiq_sim_robot_server.launch \
+        gui:=true \
         max_velocity_scale_factor:=0.2 \
         action_cycle_rate:=20"
     def __init__(self, ip=None, lower_bound_port=None, upper_bound_port=None, gui=False, **kwargs):
         Simulation.__init__(self, self.cmd, ip, lower_bound_port, upper_bound_port, gui, **kwargs)
-        EndEffectorPositioningUR5.__init__(self, rs_address=self.robot_server_ip, **kwargs)
+        GraspObjectUR5.__init__(self, rs_address=self.robot_server_ip, **kwargs)
