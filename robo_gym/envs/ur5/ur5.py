@@ -1058,11 +1058,17 @@ class GraspObjectUR5(UR5Env):
             info['target_coord'] = target_coord
 
         return reward, done, info
-   
+    
 
 class GraspObjectUR5Sim(GraspObjectUR5, Simulation):
-    cmd = "roslaunch ur_robot_server ur5Robotiq_sim_robot_server.launch \
-        gui:=true \
+    #cmd = "roslaunch ur_robot_server ur5Robotiq_sim_robot_server.launch \
+    #    max_velocity_scale_factor:=0.2 \
+    #    action_cycle_rate:=20"
+    #def __init__(self, ip=None, lower_bound_port=None, upper_bound_port=None, gui=False, **kwargs):
+    #    Simulation.__init__(self, self.cmd, ip, lower_bound_port, upper_bound_port, gui, **kwargs)
+    #    GraspObjectUR5.__init__(self, rs_address=self.robot_server_ip, **kwargs)
+
+    cmd = "roslaunch ur_robot_server ur5_sim_robot_server.launch \
         max_velocity_scale_factor:=0.2 \
         action_cycle_rate:=20"
     def __init__(self, ip=None, lower_bound_port=None, upper_bound_port=None, gui=False, **kwargs):
