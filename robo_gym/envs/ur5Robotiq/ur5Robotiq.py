@@ -31,17 +31,18 @@ class UR5RobotiqEnv(gym.Env):
     """
     real_robot = False
 
-    def __init__(self, rs_address=None, max_episode_steps=300, **kwargs):
-        self.ur5 = ur_utils.UR5()
+    def __init__(self, rs_address=None, max_episode_steps=300, robotiq=85, **kwargs):
+        self.ur5 = ur_utils.UR5ROBOTIQ(robotiq)
         self.max_episode_steps = max_episode_steps
         self.elapsed_steps = 0
         self.observation_space = self._get_observation_space()
-        self.action_space = spaces.Box(low=np.full((6), -1.0), high=np.full((6), 1.0), dtype=np.float32)
+        self.action_space_dim = self.ur5.number_of_joint_velocities
+        self.action_space = spaces.Box(low=np.full((self.action_space_dim), -1.0), high=np.full((self.action_space_dim), 1.0), dtype=np.float32)  #TODO:update action space
         self.seed()
         self.distance_threshold = 0.1
         self.abs_joint_pos_range = self.ur5.get_max_joint_positions()
-        self.initial_joint_positions_low = np.zeros(6)
-        self.initial_joint_positions_high = np.zeros(6)
+        self.initial_joint_positions_low = np.zeros(self.ur5.number_of_joint_positions)
+        self.initial_joint_positions_high = np.zeros(self.ur5.number_of_joint_positions)
 
         self.last_position_on_success = []
         
@@ -61,7 +62,7 @@ class UR5RobotiqEnv(gym.Env):
         """Environment reset.
 
         Args:
-            initial_joint_positions (list[6] or np.array[6]): robot joint positions in radians.
+            initial_joint_positions (list[7] or np.array[7]): robot joint positions in radians.
             ee_target_pose (list[6] or np.array[6]): [x,y,z,r,p,y] target end effector pose.
 
         Returns:
@@ -76,37 +77,56 @@ class UR5RobotiqEnv(gym.Env):
         # Initialize environment state
         self.state = np.zeros(self._get_env_state_len())
         rs_state = np.zeros(self._get_robot_server_state_len())
-        
+        #print("self.state")
+        #print(self.state)
+        #print("rs_state")
+        #print(rs_state)
 
-        print(self.state)
-        print(rs_state)
 
         # Set initial robot joint positions
         if initial_joint_positions:
-            assert len(initial_joint_positions) == 6
+            assert len(initial_joint_positions) == self.ur5.number_of_joint_positions
             ur5_initial_joint_positions = initial_joint_positions
         elif (len(self.last_position_on_success) != 0) and (type=='continue'):
             ur5_initial_joint_positions = self.last_position_on_success
         else:
             ur5_initial_joint_positions = self._get_initial_joint_positions()
 
-        rs_state[6:12] = self.ur5._ur_5_joint_list_to_ros_joint_list(ur5_initial_joint_positions)
+        #print("ur5 initial positions")
+        #print(ur5_initial_joint_positions)
+        rs_state[self.rs_state__ur_j_pos_start : (self.rs_state__ur_j_pos_start + self.ur5.number_of_joint_positions)] = self.ur5._ur_5_joint_list_to_ros_joint_list(ur5_initial_joint_positions) #6:13
+        #print("robot server state")
+        #print(rs_state)
 
         # Set target End Effector pose
         if ee_target_pose:
-            assert len(ee_target_pose) == 6
+            assert len(ee_target_pose) == self.rs_state__target_len #6
         else:
             ee_target_pose = self._get_target_pose()
 
-        rs_state[0:6] = ee_target_pose
+        rs_state[0:self.rs_state__target_len] = ee_target_pose #0:6
+        print("robot server state")
+        print(rs_state)
 
         # Set initial state of the Robot Server
         state_msg = robot_server_pb2.State(state = rs_state.tolist())
+        #print("robot server state message")
+        #print(state_msg)
+
         if not self.client.set_state_msg(state_msg):
             raise RobotServerError("set_state")
 
         # Get Robot Server state
         rs_state = copy.deepcopy(np.nan_to_num(np.array(self.client.get_state_msg().state)))
+        #print("robot server state message")
+        #print(state_msg)
+        #print("len(rs_state)")
+        #print(len(rs_state))
+        #print("self._get_robot_server_state_len()")
+        #print(self._get_robot_server_state_len())
+        print("robot server state")
+        print(rs_state)
+
 
         # Check if the length of the Robot Server state received is correct
         if not len(rs_state)== self._get_robot_server_state_len():
@@ -120,16 +140,19 @@ class UR5RobotiqEnv(gym.Env):
         if not self.observation_space.contains(self.state):
             raise InvalidStateError()
         
-        print(rs_state)
+        #print(rs_state)
         # check if current position is in the range of the initial joint positions
         if (len(self.last_position_on_success) == 0) or (type=='random'):
-            joint_positions = self.ur5._ros_joint_list_to_ur5_joint_list(rs_state[6:12])
+            joint_positions = self.ur5._ros_joint_list_to_ur5_joint_list(rs_state[ self.rs_state__ur_j_pos_start : (self.rs_state__ur_j_pos_start + self.ur5.number_of_joint_positions ) ]) #6:13
+            
+            print(rs_state[ self.rs_state__ur_j_pos_start : (self.rs_state__ur_j_pos_start + self.ur5.number_of_joint_positions ) ])
             tolerance = 0.1
             for joint in range(len(joint_positions)):
                 if (joint_positions[joint]+tolerance < self.initial_joint_positions_low[joint]) or  (joint_positions[joint]-tolerance  > self.initial_joint_positions_high[joint]):
                     print(joint_positions)
                     print(self.initial_joint_positions_low)
                     print(self.initial_joint_positions_high)
+                    print(joint)
                     raise InvalidStateError('Reset joint positions are not within defined range')
 
 
@@ -189,12 +212,25 @@ class UR5RobotiqEnv(gym.Env):
         Returns:
             int: Length of the Robot Server state.
 
+        (updated the number of joint positions)
         """
 
-        target = [0.0]*6
-        ur_j_pos = [0.0]*6
-        ur_j_vel = [0.0]*6
-        ee_to_base_transform = [0.0]*7
+        #robot server state content
+        self.rs_state__target_len=6 #[x, y, z, r, p, y]
+        self.rs_state__ee_len=7 #TODO: 7?
+
+        #start indeces
+        self.rs_state__target_start=0
+        self.rs_state__ur_j_pos_start = self.rs_state__target_start + self.rs_state__target_len
+        self.rs_state__ur_j_vel_start = self.rs_state__ur_j_pos_start + self.ur5.number_of_joint_positions
+        self.rs_state__ee_start = self.rs_state__ur_j_vel_start + self.ur5.number_of_joint_velocities
+        self.rs_state__collision_start = self.rs_state__ee_start + self.rs_state__ee_len
+
+
+        target = [0.0] * self.rs_state__target_len #[x,y,z,alpha,theta,gamma] pose.
+        ur_j_pos = [0.0] * self.ur5.number_of_joint_positions
+        ur_j_vel = [0.0] * self.ur5.number_of_joint_velocities
+        ee_to_base_transform = [0.0]*self.rs_state__ee_len 
         ur_collision = [0.0]
         rs_state = target + ur_j_pos + ur_j_vel + ee_to_base_transform + ur_collision
 
@@ -209,18 +245,23 @@ class UR5RobotiqEnv(gym.Env):
         Returns:
             int: Length of the environment state
 
+        (updated the number of joint positions)
         """
 
         target_polar = [0.0]*3
-        ur_j_pos = [0.0]*6
-        ur_j_vel = [0.0]*6
+        ur_j_pos = [0.0] * self.ur5.number_of_joint_positions
+        ur_j_vel = [0.0] * self.ur5.number_of_joint_velocities
         env_state = target_polar + ur_j_pos + ur_j_vel
 
         return len(env_state)
 
     def _set_initial_joint_positions_range(self):
-        self.initial_joint_positions_low = np.array([-0.65, -2.75, 1.0, -3.14, -1.7, -3.14])
-        self.initial_joint_positions_high = np.array([0.65, -2.0, 2.5, 3.14, -1.0, 3.14])
+        '''
+        joint positions order: shoulder_pan_joint, shoulder_lift_joint, elbow_joint, writ_1_joint, writ_2_joint, writ_3_joint, finger_joint (0 (open) as initial state)
+        (updated the number of joint positions)
+        '''
+        self.initial_joint_positions_low = np.array([-0.65, -2.75, 1.0, -3.14, -1.7, -3.14, 0])
+        self.initial_joint_positions_high = np.array([0.65, -2.0, 2.5, 3.14, -1.0, 3.14, 0])
 
     def _get_initial_joint_positions(self):
         """Generate random initial robot joint positions.
@@ -260,10 +301,12 @@ class UR5RobotiqEnv(gym.Env):
 
         # Transform cartesian coordinates of target to polar coordinates 
         # with respect to the end effector frame
-        target_coord = rs_state[0:3]
+        print('self.rs_state__target_start:'+ str(self.rs_state__target_start))
+        target_coord = rs_state[self.rs_state__target_start : (self.rs_state__target_start + 3) ] #0:3
         
-        ee_to_base_translation = rs_state[18:21]
-        ee_to_base_quaternion = rs_state[21:25]
+        print('self.rs_state__ee_start:'+ str(self.rs_state__ee_start))
+        ee_to_base_translation = rs_state[ self.rs_state__ee_start : (self.rs_state__ee_start + 3) ] #20:23
+        ee_to_base_quaternion = rs_state[ (self.rs_state__ee_start + 3) : (self.rs_state__ee_start + self.rs_state__ee_len)] #23:28
         ee_to_base_rotation = R.from_quat(ee_to_base_quaternion)
         base_to_ee_rotation = ee_to_base_rotation.inv()
         base_to_ee_quaternion = base_to_ee_rotation.as_quat()
@@ -274,8 +317,9 @@ class UR5RobotiqEnv(gym.Env):
 
         # Transform joint positions and joint velocities from ROS indexing to
         # standard indexing
-        ur_j_pos = self.ur5._ros_joint_list_to_ur5_joint_list(rs_state[6:12])
-        ur_j_vel = self.ur5._ros_joint_list_to_ur5_joint_list(rs_state[12:18])
+        ur_j_pos = self.ur5._ros_joint_list_to_ur5_joint_list(rs_state[ self.rs_state__ur_j_pos_start : (self.rs_state__ur_j_pos_start + self.ur5.number_of_joint_positions ) ]) #6:13
+        
+        ur_j_vel = self.ur5._ros_joint_list_to_ur5_joint_list(rs_state[ self.rs_state__ur_j_vel_start : (self.rs_state__ur_j_vel_start + self.ur5.number_of_joint_velocities) ]) #13:20
 
         # Normalize joint position values
         ur_j_pos_norm = self.ur5.normalize_joint_values(joints=ur_j_pos)
@@ -294,14 +338,14 @@ class UR5RobotiqEnv(gym.Env):
         """
 
         # Joint position range tolerance
-        pos_tolerance = np.full(6,0.1)
+        pos_tolerance = np.full(self.ur5.number_of_joint_positions,0.1)
         # Joint positions range used to determine if there is an error in the sensor readings
-        max_joint_positions = np.add(np.full(6, 1.0), pos_tolerance)
-        min_joint_positions = np.subtract(np.full(6, -1.0), pos_tolerance)
+        max_joint_positions = np.add(np.full(self.ur5.number_of_joint_positions, 1.0), pos_tolerance)
+        min_joint_positions = np.subtract(np.full(self.ur5.number_of_joint_positions, -1.0), pos_tolerance)
         # Target coordinates range
         target_range = np.full(3, np.inf)
         # Joint positions range tolerance
-        vel_tolerance = np.full(6,0.5)
+        vel_tolerance = np.full(self.ur5.number_of_joint_velocities,0.5)
         # Joint velocities range used to determine if there is an error in the sensor readings
         max_joint_velocities = np.add(self.ur5.get_max_joint_velocities(), vel_tolerance)
         min_joint_velocities = np.subtract(self.ur5.get_min_joint_velocities(), vel_tolerance)
@@ -369,4 +413,4 @@ class GraspObjectUR5Sim(GraspObjectUR5, Simulation):
         action_cycle_rate:=20"
     def __init__(self, ip=None, lower_bound_port=None, upper_bound_port=None, gui=False, **kwargs):
         Simulation.__init__(self, self.cmd, ip, lower_bound_port, upper_bound_port, gui, **kwargs)
-        GraspObjectUR5.__init__(self, rs_address=self.robot_server_ip, **kwargs)
+        GraspObjectUR5.__init__(self, rs_address=self.robot_server_ip, robotiq=85, **kwargs)
