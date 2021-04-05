@@ -364,14 +364,14 @@ class GraspObjectUR5(UR5RobotiqEnv):
         info = {}
 
         # Calculate distance to the target
-        target_coord = np.array(rs_state[0:3])
-        ee_coord = np.array(rs_state[18:21])
+        target_coord = np.array(rs_state[self.rs_state__target_start:(self.rs_state__target_start + 3)]) #[0:3]
+        ee_coord = np.array(rs_state[self.rs_state__ee_start:(self.rs_state__ee_start + 3)]) #[20:23]
         euclidean_dist_3d = np.linalg.norm(target_coord - ee_coord)
 
         # Reward base
         reward = -1 * euclidean_dist_3d
         
-        joint_positions = self.ur5._ros_joint_list_to_ur5_joint_list(rs_state[6:12])
+        joint_positions = self.ur5._ros_joint_list_to_ur5_joint_list(rs_state[self.rs_state__ur_j_pos_start:(self.rs_state__ur_j_pos_start + self.ur5.number_of_joint_positions)]) #[6:13]
         joint_positions_normalized = self.ur5.normalize_joint_values(joint_positions)
         delta = np.abs(np.subtract(joint_positions_normalized, action))
         reward = reward - (0.05 * np.sum(delta))
@@ -383,7 +383,7 @@ class GraspObjectUR5(UR5RobotiqEnv):
             info['target_coord'] = target_coord
 
         # Check if robot is in collision
-        if rs_state[25] == 1:
+        if rs_state[-1] == 1:
             collision = True
         else:
             collision = False
