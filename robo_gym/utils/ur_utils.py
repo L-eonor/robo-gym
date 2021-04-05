@@ -262,10 +262,10 @@ class UR5ROBOTIQ():
     def __init__(self, robotiq=85):
 
         # Indexes go from shoulder pan joint to end effector
-        if (robotiq=85): #if robotiq 85, finger joint lims are 0 and 0.8
+        if (robotiq==85): #if robotiq 85, finger joint lims are 0 and 0.8
             self.max_joint_positions = np.array([6.28,6.28,6.28,6.28,6.28,6.28, 0.8])
             self.min_joint_positions = - np.array([6.28,6.28,6.28,6.28,6.28,6.28, 0])
-        else if(robotiq=140): #if robotiq 140, finger joint lims are 0 and 0.7
+        elif (robotiq==140): #if robotiq 140, finger joint lims are 0 and 0.7
             self.max_joint_positions = np.array([6.28,6.28,6.28,6.28,6.28,6.28, 0.7])
             self.min_joint_positions = - np.array([6.28,6.28,6.28,6.28,6.28,6.28, 0])
 
