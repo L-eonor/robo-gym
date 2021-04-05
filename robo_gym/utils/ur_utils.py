@@ -284,13 +284,15 @@ class UR5ROBOTIQ():
 
         Args:
             ros_thetas (list): Joint angles with ROS indexing.
+            Rostopic /joint_states order: elbow_joint, finger_joint, shoulder_lift_joint, shoulder_pan_joint, writ_1_joint, writ_2_joint, writ_3_joint
 
         Returns:
             np.array: Joint angles with standard indexing.
+            Desired order: shoulder_pan_joint, shoulder_lift_joint, elbow_joint, writ_1_joint, writ_2_joint, writ_3_joint, finger_joint
 
         """
 
-        return np.array([ros_thetas[2],ros_thetas[1],ros_thetas[0],ros_thetas[3],ros_thetas[4],ros_thetas[5]])
+        return np.array([ros_thetas[3],ros_thetas[2],ros_thetas[0],ros_thetas[4],ros_thetas[5],ros_thetas[6]])
 
     def _ur_5_joint_list_to_ros_joint_list(self,thetas):
         """Transform joint angles list from standard indexing to ROS indexing.
@@ -301,13 +303,15 @@ class UR5ROBOTIQ():
 
         Args:
             thetas (list): Joint angles with standard indexing.
+            Desired order: shoulder_pan_joint, shoulder_lift_joint, elbow_joint, writ_1_joint, writ_2_joint, writ_3_joint, finger_joint
 
         Returns:
             np.array: Joint angles with ROS indexing.
+            Rostopic /joint_states order: elbow_joint, finger_joint, shoulder_lift_joint, shoulder_pan_joint, writ_1_joint, writ_2_joint, writ_3_joint
 
         """
 
-        return np.array([thetas[2],thetas[1],thetas[0],thetas[3],thetas[4],thetas[5]])
+        return np.array([thetas[2],thetas[6],thetas[1],thetas[0],thetas[3],thetas[4],thetas[5]])
 
     def get_random_workspace_pose(self):
         """Get pose of a random point in the UR5 workspace.
