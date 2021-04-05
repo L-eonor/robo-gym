@@ -97,8 +97,6 @@ class UR5RobotiqEnv(gym.Env):
             ee_target_pose = self._get_target_pose()
 
         rs_state[0:self.rs_state__target_len] = ee_target_pose #0:6
-        print("robot server state")
-        print(rs_state)
 
         # Set initial state of the Robot Server
         state_msg = robot_server_pb2.State(state = rs_state.tolist())
@@ -122,7 +120,6 @@ class UR5RobotiqEnv(gym.Env):
         if not self.observation_space.contains(self.state):
             raise InvalidStateError()
         
-        #print(rs_state)
         # check if current position is in the range of the initial joint positions
         if (len(self.last_position_on_success) == 0) or (type=='random'):
             joint_positions = self.ur5._ros_joint_list_to_ur5_joint_list(rs_state[ self.rs_state__ur_j_pos_start : (self.rs_state__ur_j_pos_start + self.ur5.number_of_joint_positions ) ]) #6:13
