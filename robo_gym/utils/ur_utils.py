@@ -275,7 +275,7 @@ class UR5ROBOTIQ():
 
         #joint number of ..
         self.number_of_joint_positions = len(self.max_joint_positions)
-        self.number_of_joint_velocities = 6
+        self.number_of_joint_velocities = 7
 
         #joint velocities
         self.max_joint_velocities = np.array([np.inf] * self.number_of_joint_velocities)
@@ -401,7 +401,8 @@ class UR5ROBOTIQ():
         """
         for i in range(len(joints)):
             if joints[i] <= 0:
-                joints[i] = joints[i]/abs(self.min_joint_positions[i])
+                if not self.min_joint_positions[i]==0: #for finger_joint, min position is 0-> divide by zero
+                    joints[i] = joints[i]/abs(self.min_joint_positions[i])
             else:
                 joints[i] = joints[i]/abs(self.max_joint_positions[i])
         return joints
