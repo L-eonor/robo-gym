@@ -261,9 +261,7 @@ class UR5ROBOTIQ():
     """
     def __init__(self, robotiq=85):
 
-        self.number_of_joint_positions = len(self.max_joint_positions)
-        self.number_of_joint_velocities = 6
-
+        #joint positions
         # Indexes go from shoulder pan joint to end effector
         if (robotiq==85): #if robotiq 85, finger joint lims are 0 and 0.8
             self.max_joint_positions = np.array([6.28,6.28,6.28,6.28,6.28,6.28, 0.8])
@@ -275,6 +273,11 @@ class UR5ROBOTIQ():
         else:
             raise InvalidStateError('Invalid gripper')
 
+        #joint number of ..
+        self.number_of_joint_positions = len(self.max_joint_positions)
+        self.number_of_joint_velocities = 6
+
+        #joint velocities
         self.max_joint_velocities = np.array([np.inf] * self.number_of_joint_velocities)
         self.min_joint_velocities = - self.max_joint_velocities
 
