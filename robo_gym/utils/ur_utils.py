@@ -295,11 +295,19 @@ class UR5ROBOTIQ():
 
         Returns:
             np.array: Joint angles with standard indexing.
-            Desired order: shoulder_pan_joint, shoulder_lift_joint, elbow_joint, writ_1_joint, writ_2_joint, writ_3_joint, finger_joint
+            Desired order: shoulder_pan_joint, shoulder_lift_joint, elbow_joint, wrist_1_joint, wrist_2_joint, wrist_3_joint, finger_joint
 
         """
+        shoulder_pan_joint_index = 3
+        shoulder_lift_joint_index= 2
+        elbow_joint_index= 0
+        wrist_1_joint_index= 4
+        wrist_2_joint_index= 5
+        wrist_3_joint_index= 6
+        finger_joint_index= 1
 
-        return np.array([ros_thetas[3],ros_thetas[2],ros_thetas[0],ros_thetas[4],ros_thetas[5],ros_thetas[6]])
+        return np.array([ros_thetas[shoulder_pan_joint_index],ros_thetas[shoulder_lift_joint_index],ros_thetas[elbow_joint_index], 
+        ros_thetas[wrist_1_joint_index],ros_thetas[wrist_2_joint_index],ros_thetas[wrist_3_joint_index],ros_thetas[finger_joint_index]])
 
     def _ur_5_joint_list_to_ros_joint_list(self,thetas):
         """Transform joint angles list from standard indexing to ROS indexing.
@@ -317,8 +325,16 @@ class UR5ROBOTIQ():
             Rostopic /joint_states order: elbow_joint, finger_joint, shoulder_lift_joint, shoulder_pan_joint, writ_1_joint, writ_2_joint, writ_3_joint
 
         """
+        elbow_joint_index = 2
+        finger_joint_index = 6
+        shoulder_lift_joint_index = 1
+        shoulder_pan_joint_index = 0
+        wrist_1_joint_index = 3
+        wrist_2_joint_index = 4
+        wrist_3_joint_index = 5
 
-        return np.array([thetas[2],thetas[6],thetas[1],thetas[0],thetas[3],thetas[4],thetas[5]])
+        return np.array([thetas[elbow_joint_index],thetas[finger_joint_index],thetas[shoulder_lift_joint_index],thetas[shoulder_pan_joint_index], 
+        thetas[wrist_1_joint_index],thetas[wrist_2_joint_index],thetas[wrist_3_joint_index]])
 
     def get_random_workspace_pose(self):
         """Get pose of a random point in the UR5 workspace.
