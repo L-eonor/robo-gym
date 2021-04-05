@@ -13,7 +13,7 @@ import robo_gym_server_modules.robot_server.client as rs_client
 from robo_gym.envs.simulation_wrapper import Simulation
 from robo_gym_server_modules.robot_server.grpc_msgs.python import robot_server_pb2
 
-class UR5Env(gym.Env):
+class UR5RobotiqEnv(gym.Env):
     """Universal Robots UR5 base environment.
 
     Args:
@@ -78,7 +78,8 @@ class UR5Env(gym.Env):
         rs_state = np.zeros(self._get_robot_server_state_len())
         
 
-        print(self.last_position_on_success)
+        print(self.state)
+        print(rs_state)
 
         # Set initial robot joint positions
         if initial_joint_positions:
@@ -119,6 +120,7 @@ class UR5Env(gym.Env):
         if not self.observation_space.contains(self.state):
             raise InvalidStateError()
         
+        print(rs_state)
         # check if current position is in the range of the initial joint positions
         if (len(self.last_position_on_success) == 0) or (type=='random'):
             joint_positions = self.ur5._ros_joint_list_to_ur5_joint_list(rs_state[6:12])
@@ -311,7 +313,7 @@ class UR5Env(gym.Env):
 
 
 
-class GraspObjectUR5(UR5Env):
+class GraspObjectUR5(UR5RobotiqEnv):
     def _reward(self, rs_state, action):
         reward = 0
         done = False
