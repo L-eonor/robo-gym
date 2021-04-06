@@ -264,8 +264,8 @@ class UR5ROBOTIQ():
     def __init__(self, robotiq=85):
 
         #joint names
-        self.joint_names_rostopic=self.ur_joint_dict().get_names_ros_order  #joint names according to /joint_states order                                    
-        self.joint_names_standard=self.ur_joint_dict().get_names_std_order #joint names according to /joint_states order
+        self.joint_names_rostopic=self.ur_joint_dict().get_names_ros_order()  #joint names according to /joint_states order                                    
+        self.joint_names_standard=self.ur_joint_dict().get_names_std_order() #joint names according to /joint_states order
         
         #joint number of ..
         self.number_of_joints = len(self.joint_names_rostopic)
