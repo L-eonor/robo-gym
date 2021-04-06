@@ -424,6 +424,8 @@ class UR5ROBOTIQ():
         def __init__(self):
             self.std_order=["shoulder_pan_joint", "shoulder_lift_joint", "elbow_joint", "wrist_1_joint", "wrist_2_joint", "wrist_3_joint", "finger_joint"]
             self.ros_order=["elbow_joint", "finger_joint", "shoulder_lift_joint", "shoulder_pan_joint", "wrist_1_joint", "wrist_2_joint", "wrist_3_joint"]
+            self.arm_joints=["shoulder_pan_joint", "shoulder_lift_joint", "elbow_joint", "wrist_1_joint", "wrist_2_joint", "wrist_3_joint"] #std order
+            self.finger_joints=["finger_joint"] #std order
 
             self.joints={"shoulder_pan_joint"  : 0,
                     "shoulder_lift_joint" : 0,
@@ -433,6 +435,7 @@ class UR5ROBOTIQ():
                     "wrist_3_joint"       : 0,
                     "finger_joint"        : 0
                     }
+
 
         def set_values_ros_order(self, values):
             """
@@ -511,3 +514,19 @@ class UR5ROBOTIQ():
                 * output (np array): joint names in ros order
             """
             return self.std_order
+
+        def get_finger_joints_value(self):
+            """
+            Returns array of finger joint values in std order
+
+                * output (np array): finger joint values in std order
+            """
+            return np.fromiter( [self.joints.get(key) for key in self.finger_joints] , dtype=np.float32)
+
+        def get_arm_joints_value(self):
+            """
+            Returns array of arm joint values in std order
+
+                * output (np array): arm joint values in std order
+            """
+            return np.fromiter( [self.joints.get(key) for key in self.arm_joints] , dtype=np.float32)
