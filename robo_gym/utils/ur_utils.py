@@ -264,7 +264,7 @@ class UR5ROBOTIQ():
     def __init__(self, robotiq=85):
 
         #joint names
-        self.joint_names_rostopic=self.ur_joint_dict().get_names_ros_order()  #joint names according to /joint_states order                                    
+        self.joint_names_rostopic=self.ur_joint_dict().get_names_ros_order() #joint names according to /joint_states order                                    
         self.joint_names_standard=self.ur_joint_dict().get_names_std_order() #joint names according to /joint_states order
         
         #joint number of ..
@@ -276,18 +276,22 @@ class UR5ROBOTIQ():
         # joint positions, standard order
         # Indexes go from shoulder pan joint to end effector
         if (robotiq==85): #if robotiq 85, finger joint lims are 0 and 0.8
-            self.max_joint_positions = np.array([6.28,6.28,6.28,6.28,6.28,6.28, 0.8])
-            self.min_joint_positions = - np.array([6.28,6.28,6.28,6.28,6.28,6.28, 0])
+            max_joint_pos=   np.array([6.28,6.28,6.28,6.28,6.28,6.28, 0.8])
+            min_joint_pos= - np.array([6.28,6.28,6.28,6.28,6.28,6.28, 0])
+            
         elif (robotiq==140): #if robotiq 140, finger joint lims are 0 and 0.7
-            self.max_joint_positions = np.array([6.28,6.28,6.28,6.28,6.28,6.28, 0.7])
-            self.min_joint_positions = - np.array([6.28,6.28,6.28,6.28,6.28,6.28, 0])
+            max_joint_pos =   np.array([6.28,6.28,6.28,6.28,6.28,6.28, 0.7])
+            min_joint_pos = - np.array([6.28,6.28,6.28,6.28,6.28,6.28, 0])
 
         else:
             raise InvalidStateError('Invalid gripper')
 
+        self.ur_joint_max_pos = self.ur_joint_dict().set_values_std_order(max_joint_pos)
+        self.ur_joint_min_pos = self.ur_joint_dict().set_values_std_order(min_joint_pos)
+
         #joint velocities, standard order
-        self.max_joint_velocities = np.array([np.inf] * self.number_of_joint_velocities)
-        self.min_joint_velocities = - self.max_joint_velocities
+        self.ur_joint_max_vel = self.ur_joint_dict().set_values_std_order( np.array([np.inf] * self.number_of_joint_velocities))
+        self.ur_joint_min_vel = self.ur_joint_dict().set_values_std_order(-np.array([np.inf] * self.number_of_joint_velocities))
 
     def _ros_joint_list_to_ur5_joint_list(self,ros_thetas):
         """Transform joint angles list from ROS indexing to standard indexing.
@@ -377,35 +381,36 @@ class UR5ROBOTIQ():
 
     def get_max_joint_positions(self):
 
-        return self.max_joint_positions
+        return self.ur_joint_max_pos.get_values_std_order()
 
     def get_min_joint_positions(self):
 
-        return self.min_joint_positions
+        return self.ur_joint_min_pos.get_values_std_order()
 
     def get_max_joint_velocities(self):
 
-        return self.max_joint_velocities
+        return self.ur_joint_max_vel.get_values_std_order()
 
     def get_min_joint_velocities(self):
 
-        return self.min_joint_velocities
+        return self.ur_joint_min_vel.get_values_std_order()
 
     def normalize_joint_values(self, joints):
         """Normalize joint position values
         
         Args:
-            joints (np.array): Joint position values
+            joints (np.array): Joint position values (std order) 
 
         Returns:
             norm_joints (np.array): Joint position values normalized between [-1 , 1]
         """
         for i in range(len(joints)):
             if joints[i] <= 0:
-                if not self.min_joint_positions[i]==0: #for finger_joint, min position is 0-> divide by zero
-                    joints[i] = joints[i]/abs(self.min_joint_positions[i])
+                if not self.ur_joint_min_pos.get_values_std_order()[i]==0: #for finger_joint, min position is 0-> divide by zero
+                    joints[i] = joints[i]/abs(self.ur_joint_min_pos.get_values_std_order()[i])
             else:
-                joints[i] = joints[i]/abs(self.max_joint_positions[i])
+                if not self.ur_joint_max_pos.get_values_std_order()[i]==0: #for finger_joint, min position is 0-> divide by zero
+                    joints[i] = joints[i]/abs(self.ur_joint_max_pos.get_values_std_order()[i])
         return joints
 
 
@@ -457,7 +462,7 @@ class UR5ROBOTIQ():
                 self.joints[self.ros_order[index]]=values[index]
 
 
-            return self.joints
+            return self
 
         def set_values_std_order(self, values):
             """
@@ -479,7 +484,7 @@ class UR5ROBOTIQ():
                 self.joints[self.std_order[index]]=values[index]
 
 
-            return self.joints
+            return self
 
         def get_values_ros_order(self):
             """
