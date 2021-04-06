@@ -104,21 +104,8 @@ class UR5RobotiqEnv(gym.Env):
         if not self.client.set_state_msg(state_msg):
             raise RobotServerError("set_state")
 
-        # Get Robot Server state
-        rs_state = copy.deepcopy(np.nan_to_num(np.array(self.client.get_state_msg().state)))
-
-
-        # Check if the length of the Robot Server state received is correct
-        if not len(rs_state)== self._get_robot_server_state_len():
-            raise InvalidStateError("Robot Server state received has wrong length")
-
-        # Convert the initial state from Robot Server format to environment format
-        self.state = self._robot_server_state_to_env_state(rs_state)
-
-
-        # Check if the environment state is contained in the observation space
-        if not self.observation_space.contains(self.state):
-            raise InvalidStateError()
+        #Get current state and validade
+        self.state, rs_state =self._get_current_state()
         
         # check if current position is in the range of the initial joint positions
         if (len(self.last_position_on_success) == 0) or (type=='random'):
@@ -158,14 +145,8 @@ class UR5RobotiqEnv(gym.Env):
         if not self.client.send_action(rs_action.tolist()):
             raise RobotServerError("send_action")
 
-        # Get state from Robot Server
-        rs_state = self.client.get_state_msg().state
-        # Convert the state from Robot Server format to environment format
-        self.state = self._robot_server_state_to_env_state(rs_state)
-
-        # Check if the environment state is contained in the observation space
-        if not self.observation_space.contains(self.state):
-            raise InvalidStateError()
+        #Get current state and validade
+        self.state, rs_state =self._get_current_state()
 
         # Assign reward
         reward = 0
@@ -326,6 +307,49 @@ class UR5RobotiqEnv(gym.Env):
         min_obs = np.concatenate((-target_range, min_joint_positions, min_joint_velocities))
 
         return spaces.Box(low=min_obs, high=max_obs, dtype=np.float32)
+
+    def _get_current_state(self):
+        """Requests the current robot state (simulated or real)
+
+        Args:
+            NaN
+
+        Returns:
+            numpy.array: Current state in environment format.
+            rs_state (list): State in Robot Server format.
+
+        """
+
+        # Get Robot Server state
+        rs_state = copy.deepcopy(np.nan_to_num(np.array(self.client.get_state_msg().state)))
+
+
+        # Check if the length of the Robot Server state received is correct
+        if not len(rs_state)== self._get_robot_server_state_len():
+            raise InvalidStateError("Robot Server state received has wrong length")
+
+        # Convert the initial state from Robot Server format to environment format
+        state = self._robot_server_state_to_env_state(rs_state)
+
+
+        # Check if the environment state is contained in the observation space
+        if not self.observation_space.contains(self.state):
+            raise InvalidStateError()
+
+        return state, rs_state
+
+    def _get_current_gripper_state(self):
+        """Requests the current robot's gripper state (simulated or real)
+
+        Args:
+            NaN
+
+        Returns:
+            numpy.array: Current state in environment format.
+
+        """
+
+        current_state, _ =self._get_current_state()
 
 
 
