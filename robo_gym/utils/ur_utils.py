@@ -259,24 +259,13 @@ class UR5ROBOTIQ():
         min_joint_velocities (np.array): Description of parameter `min_joint_velocities`.
 
     """
+
+    
     def __init__(self, robotiq=85):
 
         #joint names
-        self.joint_names_rostopic={ 0 : "elbow_joint",
-                                    1 : "finger_joint", 
-                                    2 : "shoulder_lift_joint", 
-                                    3 : "shoulder_pan_joint", 
-                                    4 : "wrist_1_joint", 
-                                    5 : "wrist_2_joint", 
-                                    6 : "wrist_3_joint"} #joint names according to /joint_states order
-                                    
-        self.joint_names_standard={ 0 : "shoulder_pan_joint",
-                                    1 : "shoulder_lift_joint", 
-                                    2 : "elbow_joint", 
-                                    3 : "wrist_1_joint", 
-                                    4 : "wrist_2_joint", 
-                                    5 : "wrist_3_joint", 
-                                    6 : "finger_joint"} #joint names according to /joint_states order
+        self.joint_names_rostopic=self.ur_joint_dict().get_names_ros_order  #joint names according to /joint_states order                                    
+        self.joint_names_standard=self.ur_joint_dict().get_names_std_order #joint names according to /joint_states order
         
         #joint number of ..
         self.number_of_joints = len(self.joint_names_rostopic)
@@ -300,7 +289,6 @@ class UR5ROBOTIQ():
         self.max_joint_velocities = np.array([np.inf] * self.number_of_joint_velocities)
         self.min_joint_velocities = - self.max_joint_velocities
 
-
     def _ros_joint_list_to_ur5_joint_list(self,ros_thetas):
         """Transform joint angles list from ROS indexing to standard indexing.
 
@@ -317,30 +305,13 @@ class UR5ROBOTIQ():
             Desired order: shoulder_pan_joint, shoulder_lift_joint, elbow_joint, wrist_1_joint, wrist_2_joint, wrist_3_joint, finger_joint
 
         """
+        # create object
+        joint_angles_dict = self.ur_joint_dict()
 
-        ros_joint_angles_dict={ "elbow_joint"         : ros_thetas[ 0 ],
-                           "finger_joint"        : ros_thetas[ 1 ], 
-                           "shoulder_lift_joint" : ros_thetas[ 2 ], 
-                           "shoulder_pan_joint"  : ros_thetas[ 3 ], 
-                           "wrist_1_joint"       : ros_thetas[ 4 ], 
-                           "wrist_2_joint"       : ros_thetas[ 5 ], 
-                           "wrist_3_joint"       : ros_thetas[ 6 ]
-                           }
-        
-        std_joint_angles_dict={ "shoulder_pan_joint"  : ros_joint_angles_dict [ "shoulder_pan_joint" ],
-                           "shoulder_lift_joint" : ros_joint_angles_dict [ "shoulder_lift_joint" ],
-                           "elbow_joint"         : ros_joint_angles_dict [ "elbow_joint" ],
-                           "wrist_1_joint"       : ros_joint_angles_dict [ "wrist_1_joint" ],
-                           "wrist_2_joint"       : ros_joint_angles_dict [ "wrist_2_joint" ],
-                           "wrist_3_joint"       : ros_joint_angles_dict [ "wrist_3_joint" ],
-                           "finger_joint"        : ros_joint_angles_dict [ "finger_joint" ],
-                           }
+        # save joint values (ros order) in corresponding joints
+        joint_angles_dict.set_values_ros_order( ros_thetas )
 
-        
-
-        joint_angles= np.fromiter(std_joint_angles_dict.values(), dtype=np.float32)
-
-        return joint_angles
+        return joint_angles_dict.get_values_std_order()
 
     def _ur_5_joint_list_to_ros_joint_list(self,thetas):
         """Transform joint angles list from standard indexing to ROS indexing.
@@ -358,28 +329,13 @@ class UR5ROBOTIQ():
             Rostopic /joint_states order: elbow_joint, finger_joint, shoulder_lift_joint, shoulder_pan_joint, wrist_1_joint, wrist_2_joint, wrist_3_joint
 
         """
-            
-        std_joint_angles_dict={ "shoulder_pan_joint"  : thetas [ 0 ],
-                           "shoulder_lift_joint" : thetas [ 1 ],
-                           "elbow_joint"         : thetas [ 2 ],
-                           "wrist_1_joint"       : thetas [ 3 ],
-                           "wrist_2_joint"       : thetas [ 4 ],
-                           "wrist_3_joint"       : thetas [ 5 ],
-                           "finger_joint"        : thetas [ 6 ],
-                           }
+        # create object
+        joint_angles_dict = self.ur_joint_dict()
 
-        ros_joint_angles_dict={ "elbow_joint"    : std_joint_angles_dict [ "elbow_joint" ],
-                           "finger_joint"        : std_joint_angles_dict [ "finger_joint" ],
-                           "shoulder_lift_joint" : std_joint_angles_dict [ "shoulder_lift_joint" ],
-                           "shoulder_pan_joint"  : std_joint_angles_dict [ "shoulder_pan_joint" ],
-                           "wrist_1_joint"       : std_joint_angles_dict [ "wrist_1_joint" ],
-                           "wrist_2_joint"       : std_joint_angles_dict [ "wrist_2_joint" ],
-                           "wrist_3_joint"       : std_joint_angles_dict [ "wrist_3_joint" ]
-                           }
+        # save joint values (std order) in corresponding joints
+        joint_angles_dict.set_values_std_order( thetas )
 
-        joint_angles= np.fromiter(ros_joint_angles_dict.values(), dtype=np.float32)
-        
-        return joint_angles
+        return joint_angles_dict.get_values_ros_order()
 
     def get_random_workspace_pose(self):
         """Get pose of a random point in the UR5 workspace.
@@ -451,3 +407,107 @@ class UR5ROBOTIQ():
             else:
                 joints[i] = joints[i]/abs(self.max_joint_positions[i])
         return joints
+
+
+
+
+    class ur_joint_dict:
+        """ 
+        Saves the joint values associated with each joint name
+            args (optional): ordered array to populate joint values
+
+            Standard order, from base to end effector:shoulder_pan_joint, shoulder_lift_joint, elbow_joint, wrist_1_joint, wrist_2_joint, wrist_3_joint, finger_joint
+            Ros topic message order: elbow_joint, finger_joint, shoulder_lift_joint, shoulder_pan_joint, wrist_1_joint, wrist_2_joint, wrist_3_joint
+
+        """
+
+        def __init__(self):
+            self.std_order=["shoulder_pan_joint", "shoulder_lift_joint", "elbow_joint", "wrist_1_joint", "wrist_2_joint", "wrist_3_joint", "finger_joint"]
+            self.ros_order=["elbow_joint", "finger_joint", "shoulder_lift_joint", "shoulder_pan_joint", "wrist_1_joint", "wrist_2_joint", "wrist_3_joint"]
+
+            self.joints={"shoulder_pan_joint"  : 0,
+                    "shoulder_lift_joint" : 0,
+                    "elbow_joint"         : 0,
+                    "wrist_1_joint"       : 0,
+                    "wrist_2_joint"       : 0,
+                    "wrist_3_joint"       : 0,
+                    "finger_joint"        : 0
+                    }
+
+        def set_values_ros_order(self, values):
+            """
+            Sets the joint values according to the array passed in ros order
+            Ros topic message order: elbow_joint, finger_joint, shoulder_lift_joint, shoulder_pan_joint, wrist_1_joint, wrist_2_joint, wrist_3_joint
+
+                * input: values- array of ordered joint values
+
+                * output: dict with the corresponding values
+            """
+            values=np.array(values)
+
+            #validates array dimensions
+            if len(values) != len(self.joints) :
+                raise RobotServerError("Invalid array dimensions")
+            
+            #assigns correct joints
+            for index in range(len(self.joints)):
+                self.joints[self.ros_order[index]]=values[index]
+
+
+            return self.joints
+
+        def set_values_std_order(self, values):
+            """
+            Sets the joint values according to the array passed in std order
+            Standard order (base to end effector): shoulder_pan_joint, shoulder_lift_joint, elbow_joint, wrist_1_joint, wrist_2_joint, wrist_3_joint, finger_joint
+
+                * input: values- array of ordered joint values
+
+                * output: dict with the corresponding values
+            """
+            values=np.array(values)
+
+            #validates array dimensions
+            if len(values) != len(self.joints) :
+                raise RobotServerError("Invalid array dimensions")
+            
+            #assigns correct joints
+            for index in range(len(self.joints)):
+                self.joints[self.std_order[index]]=values[index]
+
+
+            return self.joints
+
+        def get_values_ros_order(self):
+            """
+            Returns array of joint values in ros order
+            Ros topic message order: elbow_joint, finger_joint, shoulder_lift_joint, shoulder_pan_joint, wrist_1_joint, wrist_2_joint, wrist_3_joint
+
+                * output (np array): joint values in ros order
+            """
+            return np.fromiter( [self.joints.get(key) for key in self.ros_order] , dtype=np.float32)
+        
+        def get_values_std_order(self):
+            """
+            Returns array of joint values in std order
+            Standard order (base to end effector): shoulder_pan_joint, shoulder_lift_joint, elbow_joint, wrist_1_joint, wrist_2_joint, wrist_3_joint, finger_joint
+
+                * output (np array): joint values in std order
+            """
+            return np.fromiter( [self.joints.get(key) for key in self.std_order] , dtype=np.float32)
+
+        def get_names_ros_order(self):
+            """
+            Returns array of joint names in ros order
+
+                * output (np array): joint names in ros order
+            """
+            return self.ros_order
+
+        def get_names_std_order(self):
+            """
+            Returns array of joint names in ros order
+
+                * output (np array): joint names in ros order
+            """
+            return self.std_order
