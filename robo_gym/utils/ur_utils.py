@@ -261,7 +261,30 @@ class UR5ROBOTIQ():
     """
     def __init__(self, robotiq=85):
 
-        #joint positions
+        #joint names
+        self.joint_names_rostopic={ 0 : "elbow_joint",
+                                    1 : "finger_joint", 
+                                    2 : "shoulder_lift_joint", 
+                                    3 : "shoulder_pan_joint", 
+                                    4 : "wrist_1_joint", 
+                                    5 : "wrist_2_joint", 
+                                    6 : "wrist_3_joint"} #joint names according to /joint_states order
+                                    
+        self.joint_names_standard={ 0 : "shoulder_pan_joint",
+                                    1 : "shoulder_lift_joint", 
+                                    2 : "elbow_joint", 
+                                    3 : "wrist_1_joint", 
+                                    4 : "wrist_2_joint", 
+                                    5 : "wrist_3_joint", 
+                                    6 : "finger_joint"} #joint names according to /joint_states order
+        
+        #joint number of ..
+        self.number_of_joints = len(self.joint_names_rostopic)
+        self.number_of_joint_positions = self.number_of_joints
+        self.number_of_joint_velocities = self.number_of_joints
+
+        
+        # joint positions, standard order
         # Indexes go from shoulder pan joint to end effector
         if (robotiq==85): #if robotiq 85, finger joint lims are 0 and 0.8
             self.max_joint_positions = np.array([6.28,6.28,6.28,6.28,6.28,6.28, 0.8])
@@ -273,11 +296,7 @@ class UR5ROBOTIQ():
         else:
             raise InvalidStateError('Invalid gripper')
 
-        #joint number of ..
-        self.number_of_joint_positions = len(self.max_joint_positions)
-        self.number_of_joint_velocities = 7
-
-        #joint velocities
+        #joint velocities, standard order
         self.max_joint_velocities = np.array([np.inf] * self.number_of_joint_velocities)
         self.min_joint_velocities = - self.max_joint_velocities
 
@@ -298,16 +317,30 @@ class UR5ROBOTIQ():
             Desired order: shoulder_pan_joint, shoulder_lift_joint, elbow_joint, wrist_1_joint, wrist_2_joint, wrist_3_joint, finger_joint
 
         """
-        shoulder_pan_joint_index = 3
-        shoulder_lift_joint_index= 2
-        elbow_joint_index= 0
-        wrist_1_joint_index= 4
-        wrist_2_joint_index= 5
-        wrist_3_joint_index= 6
-        finger_joint_index= 1
 
-        return np.array([ros_thetas[shoulder_pan_joint_index],ros_thetas[shoulder_lift_joint_index],ros_thetas[elbow_joint_index], 
-        ros_thetas[wrist_1_joint_index],ros_thetas[wrist_2_joint_index],ros_thetas[wrist_3_joint_index],ros_thetas[finger_joint_index]])
+        ros_joint_angles_dict={ "elbow_joint"         : ros_thetas[ 0 ],
+                           "finger_joint"        : ros_thetas[ 1 ], 
+                           "shoulder_lift_joint" : ros_thetas[ 2 ], 
+                           "shoulder_pan_joint"  : ros_thetas[ 3 ], 
+                           "wrist_1_joint"       : ros_thetas[ 4 ], 
+                           "wrist_2_joint"       : ros_thetas[ 5 ], 
+                           "wrist_3_joint"       : ros_thetas[ 6 ]
+                           }
+        
+        std_joint_angles_dict={ "shoulder_pan_joint"  : ros_joint_angles_dict [ "shoulder_pan_joint" ],
+                           "shoulder_lift_joint" : ros_joint_angles_dict [ "shoulder_lift_joint" ],
+                           "elbow_joint"         : ros_joint_angles_dict [ "elbow_joint" ],
+                           "wrist_1_joint"       : ros_joint_angles_dict [ "wrist_1_joint" ],
+                           "wrist_2_joint"       : ros_joint_angles_dict [ "wrist_2_joint" ],
+                           "wrist_3_joint"       : ros_joint_angles_dict [ "wrist_3_joint" ],
+                           "finger_joint"        : ros_joint_angles_dict [ "finger_joint" ],
+                           }
+
+        
+
+        joint_angles= np.fromiter(std_joint_angles_dict.values(), dtype=np.float32)
+
+        return joint_angles
 
     def _ur_5_joint_list_to_ros_joint_list(self,thetas):
         """Transform joint angles list from standard indexing to ROS indexing.
@@ -318,23 +351,35 @@ class UR5ROBOTIQ():
 
         Args:
             thetas (list): Joint angles with standard indexing.
-            Desired order: shoulder_pan_joint, shoulder_lift_joint, elbow_joint, writ_1_joint, writ_2_joint, writ_3_joint, finger_joint
+            Desired order: shoulder_pan_joint, shoulder_lift_joint, elbow_joint, wrist_1_joint, wrist_2_joint, wrist_3_joint, finger_joint
 
         Returns:
             np.array: Joint angles with ROS indexing.
-            Rostopic /joint_states order: elbow_joint, finger_joint, shoulder_lift_joint, shoulder_pan_joint, writ_1_joint, writ_2_joint, writ_3_joint
+            Rostopic /joint_states order: elbow_joint, finger_joint, shoulder_lift_joint, shoulder_pan_joint, wrist_1_joint, wrist_2_joint, wrist_3_joint
 
         """
-        elbow_joint_index = 2
-        finger_joint_index = 6
-        shoulder_lift_joint_index = 1
-        shoulder_pan_joint_index = 0
-        wrist_1_joint_index = 3
-        wrist_2_joint_index = 4
-        wrist_3_joint_index = 5
+            
+        std_joint_angles_dict={ "shoulder_pan_joint"  : thetas [ 0 ],
+                           "shoulder_lift_joint" : thetas [ 1 ],
+                           "elbow_joint"         : thetas [ 2 ],
+                           "wrist_1_joint"       : thetas [ 3 ],
+                           "wrist_2_joint"       : thetas [ 4 ],
+                           "wrist_3_joint"       : thetas [ 5 ],
+                           "finger_joint"        : thetas [ 6 ],
+                           }
 
-        return np.array([thetas[elbow_joint_index],thetas[finger_joint_index],thetas[shoulder_lift_joint_index],thetas[shoulder_pan_joint_index], 
-        thetas[wrist_1_joint_index],thetas[wrist_2_joint_index],thetas[wrist_3_joint_index]])
+        ros_joint_angles_dict={ "elbow_joint"    : std_joint_angles_dict [ "elbow_joint" ],
+                           "finger_joint"        : std_joint_angles_dict [ "finger_joint" ],
+                           "shoulder_lift_joint" : std_joint_angles_dict [ "shoulder_lift_joint" ],
+                           "shoulder_pan_joint"  : std_joint_angles_dict [ "shoulder_pan_joint" ],
+                           "wrist_1_joint"       : std_joint_angles_dict [ "wrist_1_joint" ],
+                           "wrist_2_joint"       : std_joint_angles_dict [ "wrist_2_joint" ],
+                           "wrist_3_joint"       : std_joint_angles_dict [ "wrist_3_joint" ]
+                           }
+
+        joint_angles= np.fromiter(ros_joint_angles_dict.values(), dtype=np.float32)
+        
+        return joint_angles
 
     def get_random_workspace_pose(self):
         """Get pose of a random point in the UR5 workspace.
