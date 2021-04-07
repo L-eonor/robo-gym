@@ -535,3 +535,27 @@ class UR5ROBOTIQ():
                 * output (np array): arm joint values in std order
             """
             return np.fromiter( [self.joints.get(key) for key in self.arm_joints] , dtype=np.float32)
+
+        def get_number_of_joints(self):
+            """
+            Returns the number of joints
+
+                * output (int): number of joints
+            """
+            return len(self.joints)
+
+        def get_number_of_arm_joints(self):
+            """
+            Returns the number of arm joints
+
+                * output (int): number of arm joints
+            """
+            return len(self.get_arm_joints_value)
+
+        def get_number_of_finger_joints(self):
+            """
+            Returns the number of finger joints
+
+                * output (int): number of finger joints
+            """
+            return len(self.get_finger_joints_value)
