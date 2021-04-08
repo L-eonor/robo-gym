@@ -285,7 +285,7 @@ class UR5ROBOTIQ():
 
         else:
             raise InvalidStateError('Invalid gripper')
-
+        # updates objects
         self.ur_joint_max_pos = self.ur_joint_dict().set_values_std_order(max_joint_pos)
         self.ur_joint_min_pos = self.ur_joint_dict().set_values_std_order(min_joint_pos)
 
@@ -381,19 +381,19 @@ class UR5ROBOTIQ():
 
     def get_max_joint_positions(self):
 
-        return self.ur_joint_max_pos.get_values_std_order()
+        return self.ur_joint_max_pos
 
     def get_min_joint_positions(self):
 
-        return self.ur_joint_min_pos.get_values_std_order()
+        return self.ur_joint_min_pos
 
     def get_max_joint_velocities(self):
 
-        return self.ur_joint_max_vel.get_values_std_order()
+        return self.ur_joint_max_vel
 
     def get_min_joint_velocities(self):
 
-        return self.ur_joint_min_vel.get_values_std_order()
+        return self.ur_joint_min_vel
 
     def normalize_joint_values(self, joints):
         """Normalize joint position values
@@ -413,13 +413,35 @@ class UR5ROBOTIQ():
                     joints[i] = joints[i]/abs(self.ur_joint_max_pos.get_values_std_order()[i])
         return joints
 
+    def normalize_ur_joint_dict(self, joint_dict):
+        """Normalize joint position values
+        
+        Args:
+            joints (ur_joint_dict): Joint object (std order) 
+
+        Returns:
+            norm_joints (ur_joint_dict): Joint position object with values normalized between [-1 , 1]
+        """
+        joints=joint_dict.get_values_std_order()
+
+        for i in range(len(joints)):
+            if joints[i] <= 0:
+                if not self.ur_joint_min_pos.get_values_std_order()[i]==0: #for finger_joint, min position is 0-> divide by zero
+                    joints[i] = joints[i]/abs(self.ur_joint_min_pos.get_values_std_order()[i])
+            else:
+                if not self.ur_joint_max_pos.get_values_std_order()[i]==0: #for finger_joint, min position is 0-> divide by zero
+                    joints[i] = joints[i]/abs(self.ur_joint_max_pos.get_values_std_order()[i])
+
+        new_joints_dict=self.ur_joint_dict().set_values_std_order(joints)
+        return new_joints_dict
+
 
 
 
     class ur_joint_dict:
         """ 
-        Saves the joint values associated with each joint name
-            args (optional): ordered array to populate joint values
+        Saves the joint values (position or velocity) associated with each joint name. Values are saved in a dic, associated to each joint name.
+        Tries to overcome the problems between standard order (natural from base joint to end effector) and ros order (alphabetical)
 
             Standard order, from base to end effector:shoulder_pan_joint, shoulder_lift_joint, elbow_joint, wrist_1_joint, wrist_2_joint, wrist_3_joint, finger_joint
             Ros topic message order: elbow_joint, finger_joint, shoulder_lift_joint, shoulder_pan_joint, wrist_1_joint, wrist_2_joint, wrist_3_joint
@@ -427,11 +449,16 @@ class UR5ROBOTIQ():
         """
 
         def __init__(self):
+
+            #joint names in each order
             self.std_order=["shoulder_pan_joint", "shoulder_lift_joint", "elbow_joint", "wrist_1_joint", "wrist_2_joint", "wrist_3_joint", "finger_joint"]
             self.ros_order=["elbow_joint", "finger_joint", "shoulder_lift_joint", "shoulder_pan_joint", "wrist_1_joint", "wrist_2_joint", "wrist_3_joint"]
+
+            #arm joints vs finger joints in standard order
             self.arm_joints=["shoulder_pan_joint", "shoulder_lift_joint", "elbow_joint", "wrist_1_joint", "wrist_2_joint", "wrist_3_joint"] #std order
             self.finger_joints=["finger_joint"] #std order
 
+            #dictionary that associates a joint value (position or velocity) to the respective name
             self.joints={"shoulder_pan_joint"  : 0,
                     "shoulder_lift_joint" : 0,
                     "elbow_joint"         : 0,
@@ -447,9 +474,10 @@ class UR5ROBOTIQ():
             Sets the joint values according to the array passed in ros order
             Ros topic message order: elbow_joint, finger_joint, shoulder_lift_joint, shoulder_pan_joint, wrist_1_joint, wrist_2_joint, wrist_3_joint
 
-                * input: values- array of ordered joint values
-
-                * output: dict with the corresponding values
+                Arguments:
+                    * values (array like)- array of ordered joint values (ros order)
+                Return:
+                    * self (ur_joint_dict)
             """
             values=np.array(values)
 
@@ -469,9 +497,10 @@ class UR5ROBOTIQ():
             Sets the joint values according to the array passed in std order
             Standard order (base to end effector): shoulder_pan_joint, shoulder_lift_joint, elbow_joint, wrist_1_joint, wrist_2_joint, wrist_3_joint, finger_joint
 
-                * input: values- array of ordered joint values
-
-                * output: dict with the corresponding values
+                Arguments:
+                    * values (array like)- array of ordered joint values (std order)
+                Return:
+                    * self (ur_joint_dict)
             """
             values=np.array(values)
 
@@ -491,8 +520,12 @@ class UR5ROBOTIQ():
             Returns array of joint values in ros order
             Ros topic message order: elbow_joint, finger_joint, shoulder_lift_joint, shoulder_pan_joint, wrist_1_joint, wrist_2_joint, wrist_3_joint
 
-                * output (np array): joint values in ros order
+                Arguments:
+                    * None
+                Return:
+                    *  (np array): joint values in ros order
             """
+
             return np.fromiter( [self.joints.get(key) for key in self.ros_order] , dtype=np.float32)
         
         def get_values_std_order(self):
@@ -500,23 +533,34 @@ class UR5ROBOTIQ():
             Returns array of joint values in std order
             Standard order (base to end effector): shoulder_pan_joint, shoulder_lift_joint, elbow_joint, wrist_1_joint, wrist_2_joint, wrist_3_joint, finger_joint
 
-                * output (np array): joint values in std order
+                Arguments:
+                    * None
+                Return:
+                    *  (np array): joint values in std order
             """
+
             return np.fromiter( [self.joints.get(key) for key in self.std_order] , dtype=np.float32)
 
         def get_names_ros_order(self):
             """
             Returns array of joint names in ros order
 
-                * output (np array): joint names in ros order
+                Arguments:
+                    * None
+                Return:
+                    *  (np array): joint names in std order
             """
+            
             return self.ros_order
 
         def get_names_std_order(self):
             """
-            Returns array of joint names in ros order
+            Returns array of joint names in std order
 
-                * output (np array): joint names in ros order
+                Arguments:
+                    * None
+                Return:
+                    *  (np array): joint names in std order
             """
             return self.std_order
 
@@ -524,7 +568,10 @@ class UR5ROBOTIQ():
             """
             Returns array of finger joint values in std order
 
-                * output (np array): finger joint values in std order
+                Arguments:
+                    * None
+                Return:
+                    *  (np array): finger joint values in std order
             """
             return np.fromiter( [self.joints.get(key) for key in self.finger_joints] , dtype=np.float32)
 
@@ -532,15 +579,21 @@ class UR5ROBOTIQ():
             """
             Returns array of arm joint values in std order
 
-                * output (np array): arm joint values in std order
+                Arguments:
+                    * None
+                Return:
+                    *  (np array): arm joint values in std order
             """
             return np.fromiter( [self.joints.get(key) for key in self.arm_joints] , dtype=np.float32)
 
         def get_number_of_joints(self):
             """
-            Returns the number of joints
+            Returns the total number of joints
 
-                * output (int): number of joints
+                Arguments:
+                    * None
+                Return:
+                    * (int): number of joints
             """
             return len(self.joints)
 
@@ -548,14 +601,20 @@ class UR5ROBOTIQ():
             """
             Returns the number of arm joints
 
-                * output (int): number of arm joints
+                Arguments:
+                    * None
+                Return:
+                    * (int): number of arm joints
             """
-            return len(self.get_arm_joints_value)
+            return len(self.get_arm_joints_value())
 
         def get_number_of_finger_joints(self):
             """
             Returns the number of finger joints
 
-                * output (int): number of finger joints
+                Arguments:
+                    * None
+                Return:
+                    * (int): number of finger joints
             """
-            return len(self.get_finger_joints_value)
+            return len(self.get_finger_joints_value())
