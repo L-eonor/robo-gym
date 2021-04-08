@@ -132,7 +132,6 @@ class UR5RobotiqEnv(gym.Env):
         
         # check if current position is in the range of the initial joint positions
         if (len(self.last_position_on_success) == 0) or (type=='random'):
-            #joint_positions = self.ur5._ros_joint_list_to_ur5_joint_list(rs_state[ self.rs_state__ur_j_pos_start : (self.rs_state__ur_j_pos_start + self.ur5.number_of_joint_positions ) ]) #6:13
             joint_positions=rs_state.get_state()["ur_j_pos"].get_values_std_order()
             tolerance = 0.1
             for joint in range(len(joint_positions)):
@@ -141,7 +140,6 @@ class UR5RobotiqEnv(gym.Env):
 
 
         # go one empty action and check if there is a collision
-        #action = self.state.to_array()[3:3+len(self.action_space.sample())]
         action = action_state().get_action_from_env_state(self.state) 
         _, _, done, info = self.step(action)
         self.elapsed_steps = 0
@@ -157,7 +155,6 @@ class UR5RobotiqEnv(gym.Env):
         self.elapsed_steps += 1
 
         # Check if the action is within the action space
-        #assert self.action_space.contains(action), "%r (%s) invalid" % (action, type(action))
         assert self.action_space.contains(action.to_array()), "%r (%s) invalid" % (action, type(action))
 
         # Convert environment action to Robot Server action
@@ -182,58 +179,6 @@ class UR5RobotiqEnv(gym.Env):
 
     def render():
         pass
-
-    def _get_robot_server_state_len(self):
-        """Get length of the Robot Server state.
-
-        Describes the composition of the Robot Server state and returns
-        its length.
-
-        Returns:
-            int: Length of the Robot Server state.
-
-        (updated the number of joint positions)
-        """
-
-        #robot server state content
-        self.rs_state__target_len=6 #[x, y, z, r, p, y]
-        self.rs_state__ee_len=7 #TODO: 7?
-
-        #start indeces
-        self.rs_state__target_start=0
-        self.rs_state__ur_j_pos_start = self.rs_state__target_start + self.rs_state__target_len
-        self.rs_state__ur_j_vel_start = self.rs_state__ur_j_pos_start + self.ur5.number_of_joint_positions
-        self.rs_state__ee_start = self.rs_state__ur_j_vel_start + self.ur5.number_of_joint_velocities
-        self.rs_state__collision_start = self.rs_state__ee_start + self.rs_state__ee_len
-
-
-        target = [0.0] * self.rs_state__target_len #[x,y,z,alpha,theta,gamma] pose.
-        ur_j_pos = [0.0] * self.ur5.number_of_joint_positions
-        ur_j_vel = [0.0] * self.ur5.number_of_joint_velocities
-        ee_to_base_transform = [0.0]*self.rs_state__ee_len 
-        ur_collision = [0.0]
-        rs_state = target + ur_j_pos + ur_j_vel + ee_to_base_transform + ur_collision
-
-        return len(rs_state)
-
-    def _get_env_state_len(self):
-        """Get length of the environment state.
-
-        Describes the composition of the environment state and returns
-        its length.
-
-        Returns:
-            int: Length of the environment state
-
-        (updated the number of joint positions)
-        """
-
-        target_polar = [0.0]*3
-        ur_j_pos = [0.0] * self.ur5.number_of_joint_positions
-        ur_j_vel = [0.0] * self.ur5.number_of_joint_velocities
-        env_state = target_polar + ur_j_pos + ur_j_vel
-
-        return len(env_state)
 
     def _set_initial_joint_positions_range(self):
         '''
@@ -265,47 +210,6 @@ class UR5RobotiqEnv(gym.Env):
         """
 
         return self.ur5.get_random_workspace_pose()
-
-    def _robot_server_state_to_env_state(self, rs_state):
-        """Transform state from Robot Server to environment format.
-
-        Args:
-            rs_state (list): State in Robot Server format.
-
-        Returns:
-            numpy.array: State in environment format.
-
-        """
-        # Convert to numpy array and remove NaN values
-        rs_state = np.nan_to_num(np.array(rs_state))
-
-        # Transform cartesian coordinates of target to polar coordinates 
-        # with respect to the end effector frame
-        target_coord = rs_state[self.rs_state__target_start : (self.rs_state__target_start + 3) ] #0:3
-        
-        ee_to_base_translation = rs_state[ self.rs_state__ee_start : (self.rs_state__ee_start + 3) ] #20:23
-        ee_to_base_quaternion = rs_state[ (self.rs_state__ee_start + 3) : (self.rs_state__ee_start + self.rs_state__ee_len)] #23:28
-        ee_to_base_rotation = R.from_quat(ee_to_base_quaternion)
-        base_to_ee_rotation = ee_to_base_rotation.inv()
-        base_to_ee_quaternion = base_to_ee_rotation.as_quat()
-        base_to_ee_translation = - ee_to_base_translation
-
-        target_coord_ee_frame = utils.change_reference_frame(target_coord,base_to_ee_translation,base_to_ee_quaternion)
-        target_polar = utils.cartesian_to_polar_3d(target_coord_ee_frame)
-
-        # Transform joint positions and joint velocities from ROS indexing to
-        # standard indexing
-        ur_j_pos = self.ur5._ros_joint_list_to_ur5_joint_list(rs_state[ self.rs_state__ur_j_pos_start : (self.rs_state__ur_j_pos_start + self.ur5.number_of_joint_positions ) ]) #6:13
-        
-        ur_j_vel = self.ur5._ros_joint_list_to_ur5_joint_list(rs_state[ self.rs_state__ur_j_vel_start : (self.rs_state__ur_j_vel_start + self.ur5.number_of_joint_velocities) ]) #13:20
-
-        # Normalize joint position values
-        ur_j_pos_norm = self.ur5.normalize_joint_values(joints=ur_j_pos)
-
-        # Compose environment state
-        state = np.concatenate((target_polar, ur_j_pos_norm, ur_j_vel))
-
-        return state
 
     def _get_observation_space(self):
         """Get environment observation space.
@@ -349,13 +253,12 @@ class UR5RobotiqEnv(gym.Env):
             NaN
 
         Returns:
-            numpy.array: Current state in environment format.
-            rs_state (list): State in Robot Server format.
+            new_state (env_state): Current state in environment format.
+            rs_state (server_state): State in Robot Server format.
 
         """
 
         # Get Robot Server state
-        #rs_state = copy.deepcopy(np.nan_to_num(np.array(self.client.get_state_msg().state)))
         rs_state=server_state()
         rs_state.set_server_from_message(np.nan_to_num(np.array(self.client.get_state_msg().state)))
 
