@@ -293,54 +293,6 @@ class UR5ROBOTIQ():
         self.ur_joint_max_vel = self.ur_joint_dict().set_values_std_order( np.array([np.inf] * self.number_of_joint_velocities))
         self.ur_joint_min_vel = self.ur_joint_dict().set_values_std_order(-np.array([np.inf] * self.number_of_joint_velocities))
 
-    def _ros_joint_list_to_ur5_joint_list(self,ros_thetas):
-        """Transform joint angles list from ROS indexing to standard indexing.
-
-        Rearrange a list containing the joints values from the joint indexes used
-        in the ROS join_states messages to the standard joint indexing going from
-        base to end effector.
-
-        Args:
-            ros_thetas (list): Joint angles with ROS indexing.
-            Rostopic /joint_states order: elbow_joint, finger_joint, shoulder_lift_joint, shoulder_pan_joint, writ_1_joint, writ_2_joint, writ_3_joint
-
-        Returns:
-            np.array: Joint angles with standard indexing.
-            Desired order: shoulder_pan_joint, shoulder_lift_joint, elbow_joint, wrist_1_joint, wrist_2_joint, wrist_3_joint, finger_joint
-
-        """
-        # create object
-        joint_angles_dict = self.ur_joint_dict()
-
-        # save joint values (ros order) in corresponding joints
-        joint_angles_dict.set_values_ros_order( ros_thetas )
-
-        return joint_angles_dict.get_values_std_order()
-
-    def _ur_5_joint_list_to_ros_joint_list(self,thetas):
-        """Transform joint angles list from standard indexing to ROS indexing.
-
-        Rearrange a list containing the joints values from the standard joint indexing
-        going from base to end effector to the indexing used in the ROS
-        join_states messages.
-
-        Args:
-            thetas (list): Joint angles with standard indexing.
-            Desired order: shoulder_pan_joint, shoulder_lift_joint, elbow_joint, wrist_1_joint, wrist_2_joint, wrist_3_joint, finger_joint
-
-        Returns:
-            np.array: Joint angles with ROS indexing.
-            Rostopic /joint_states order: elbow_joint, finger_joint, shoulder_lift_joint, shoulder_pan_joint, wrist_1_joint, wrist_2_joint, wrist_3_joint
-
-        """
-        # create object
-        joint_angles_dict = self.ur_joint_dict()
-
-        # save joint values (std order) in corresponding joints
-        joint_angles_dict.set_values_std_order( thetas )
-
-        return joint_angles_dict.get_values_ros_order()
-
     def get_random_workspace_pose(self):
         """Get pose of a random point in the UR5 workspace.
 
@@ -394,24 +346,6 @@ class UR5ROBOTIQ():
     def get_min_joint_velocities(self):
 
         return self.ur_joint_min_vel
-
-    def normalize_joint_values(self, joints):
-        """Normalize joint position values
-        
-        Args:
-            joints (np.array): Joint position values (std order) 
-
-        Returns:
-            norm_joints (np.array): Joint position values normalized between [-1 , 1]
-        """
-        for i in range(len(joints)):
-            if joints[i] <= 0:
-                if not self.ur_joint_min_pos.get_values_std_order()[i]==0: #for finger_joint, min position is 0-> divide by zero
-                    joints[i] = joints[i]/abs(self.ur_joint_min_pos.get_values_std_order()[i])
-            else:
-                if not self.ur_joint_max_pos.get_values_std_order()[i]==0: #for finger_joint, min position is 0-> divide by zero
-                    joints[i] = joints[i]/abs(self.ur_joint_max_pos.get_values_std_order()[i])
-        return joints
 
     def normalize_ur_joint_dict(self, joint_dict):
         """Normalize joint position values

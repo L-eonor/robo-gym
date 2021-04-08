@@ -610,8 +610,6 @@ class GraspObjectUR5(UR5RobotiqEnv):
         
         joint_positions_normalized=ur_utils.UR5ROBOTIQ(self.robotiq).normalize_ur_joint_dict(joint_dict=rs_state.state["ur_j_pos"])
 
-        #joint_positions = self.ur5._ros_joint_list_to_ur5_joint_list(rs_state[self.rs_state__ur_j_pos_start:(self.rs_state__ur_j_pos_start + self.ur5.number_of_joint_positions)]) #[6:13]
-        #joint_positions_normalized = self.ur5.normalize_joint_values(joint_positions)
         delta = np.abs(np.subtract(joint_positions_normalized.get_values_std_order(), action.values["ur_j_pos"].get_values_std_order() ))
         reward = reward - (0.05 * np.sum(delta))
 
