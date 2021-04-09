@@ -129,13 +129,16 @@ class UR5RobotiqEnv(gym.Env):
         
         #Get current state and validade
         self.state, rs_state =self._get_current_env_state()
-        
+        print(rs_state.get_server_message())
+        print(self.state.to_array())
         # check if current position is in the range of the initial joint positions
         if (len(self.last_position_on_success) == 0) or (type=='random'):
             joint_positions=rs_state.get_state()["ur_j_pos"].get_values_std_order()
             tolerance = 0.1
             for joint in range(len(joint_positions)):
                 if (joint_positions[joint]+tolerance < self.initial_joint_positions_low[joint]) or  (joint_positions[joint]-tolerance  > self.initial_joint_positions_high[joint]):
+                    print(joint)
+                    print(joint_positions[joint])
                     raise InvalidStateError('Reset joint positions are not within defined range')
 
 
@@ -155,14 +158,14 @@ class UR5RobotiqEnv(gym.Env):
         self.elapsed_steps += 1
 
         # Check if the action is within the action space
-        assert self.action_space.contains(action.to_array()), "%r (%s) invalid" % (action, type(action))
+        assert self.action_space.contains(action.values ), "%r (%s) invalid" % (action, type(action))
 
         # Convert environment action to Robot Server action
         rs_action = copy.deepcopy(action)
         # Scale action
-        rs_action.values["ur_j_pos"].set_values_std_order(np.multiply(rs_action.values["ur_j_pos"].get_values_std_order(), self.abs_joint_pos_range.get_values_std_order() ) )
+        rs_action.update_action(np.multiply(rs_action.joints["ur_j_pos"].get_values_std_order(), self.abs_joint_pos_range.get_values_std_order() ) )
         # Convert action indexing from ur5 to ros
-        rs_action = rs_action.values["ur_j_pos"].get_values_ros_order()
+        rs_action = rs_action.joints["ur_j_pos"].get_values_ros_order()
         # Send action to Robot Server
         if not self.client.send_action(rs_action.tolist()):
             raise RobotServerError("send_action")
@@ -184,9 +187,11 @@ class UR5RobotiqEnv(gym.Env):
         '''
         joint positions order: shoulder_pan_joint, shoulder_lift_joint, elbow_joint, writ_1_joint, writ_2_joint, writ_3_joint, finger_joint (0 (open) as initial state)
         (updated the number of joint positions)
+
+        IMPORTANT: gripper should start fully open (max=min=0)
         '''
-        self.initial_joint_positions_low = np.array([-0.65, -2.75, 1.0, -3.14, -1.7, -3.14, 0])
-        self.initial_joint_positions_high = np.array([0.65, -2.0, 2.5, 3.14, -1.0, 3.14, 0])
+        self.initial_joint_positions_low = np.array([-0.65, -2.75, 1.0, -3.14, -1.7, -3.14, 0.0])
+        self.initial_joint_positions_high = np.array([0.65, -2.0, 2.5, 3.14, -1.0, 3.14, 0.0])
 
     def _get_initial_joint_positions(self):
         """Generate random initial robot joint positions.
@@ -238,13 +243,13 @@ class UR5RobotiqEnv(gym.Env):
         return spaces.Box(low=min_obs, high=max_obs, dtype=np.float32)
 
     def _get_action_space(self):
-        action_space_dim = self.ur5.number_of_joint_velocities
-        #self.action_space = spaces.Dict(dict(
-        #    arm_joints=spaces.Box(low=np.full((self.number_of_arm_joints), -1.0), high=np.full((self.number_of_arm_joints), 1.0), dtype=np.float32),
-        #    finger_joints=spaces.Discrete (2) #0-open; 1-close
-        #))
-        action_space = spaces.Box(low=np.full((self.ur5.number_of_joint_velocities), -1.0), high=np.full((self.ur5.number_of_joint_velocities), 1.0), dtype=np.float32)
-        return action_space
+        
+        self.action_space = spaces.Dict({
+            "arm_joints"    : spaces.Box(low=np.full((self.number_of_arm_joints), -1.0), high=np.full((self.number_of_arm_joints), 1.0), dtype=np.float32),
+            "finger_joints" : spaces.Discrete (2) #0-open; 1-close
+        })
+        
+        return self.action_space
 
     def _get_current_env_state(self):
         """Requests the current robot state (simulated or real)
@@ -363,16 +368,25 @@ class action_state():
     def __init__(self):
         """
         Populates the structure with:
-            * ur_j_pos     (ur_joint_dict) : joint positions in angles (with zeros)
+            joints -> dict structure
+                * ur_j_pos     (ur_joint_dict) : joint positions in angles (with zeros)
+            values -> np arrays, by standard order. Divides arm joints from finger joints to make gripper vs arm controller easier
+                * arm_joints (np.array), joints in std order
+                * finger_joints (np.array), joints in std order
         """
 
-        self.values={
+        self.joints={
             "ur_j_pos": ur_utils.UR5ROBOTIQ().ur_joint_dict()
         }
+        self.values={
+            "arm_joints"    : np.array( self.joints["ur_j_pos"].get_arm_joints_value() ),
+            "finger_joints" : np.array( self.joints["ur_j_pos"].get_finger_joints_value() )
+        }
+        self.finger_threshold = 0.01 #open: x<0.01, close:x>=0.01
 
     def get_action_from_env_state(self, env_state):
         """
-        Updates the action values (joint angles)
+        Updates the action joints (joint angles), based on the environment's state
         
         Args:
             env_state (env_state object): current environment's state
@@ -381,9 +395,37 @@ class action_state():
             self (So that: new_action=action_state().get_action_from_env_state(env_state) )
         """
 
-        self.values["ur_j_pos"]=copy.deepcopy(env_state.state["ur_j_pos"])
+        self.update_action(env_state.state["ur_j_pos"].get_values_std_order() )
+
+
         return self
 
+    def update_action(self, new_action_std_order):
+        """
+        Updates the action joints (joint angles), based on array passed in standard order (base to end effector)
+        
+        Args:
+            new_action_std_order (np array): array in std order indicating joint values
+
+        Returns:
+            self (So that: new_action=action_state().get_action_from_env_state(env_state) )
+        """
+
+        #updates joint dictionary
+        self.joints["ur_j_pos"].set_values_std_order(new_action_std_order)
+
+        #finger action either 0-open, 1-close
+        for key in self.joints["ur_j_pos"].finger_joints:
+            finger_real_value=self.joints["ur_j_pos"].joints[key]
+            self.joints["ur_j_pos"].joints[key] = int(0) if self.joints["ur_j_pos"].joints[key] < self.finger_threshold else int(1)
+
+        #updates arm and finger arrays
+        self.values ["arm_joints"]    = np.array( self.joints["ur_j_pos"].get_arm_joints_value() )       #std order
+        self.values ["finger_joints"] =      int( self.joints["ur_j_pos"].get_finger_joints_value() [0]) #std order
+
+
+        return self
+        
     def to_array(self):
         """
         Retrieves the action as a list. The order is: (ur_j_pos  )
@@ -396,7 +438,7 @@ class action_state():
             action_array (list): ordered list containing the current action description. The array includes the following: ur_j_pos (std order)
         """
 
-        action_array= self.values["ur_j_pos"].get_values_std_order().tolist() 
+        action_array= self.values["arm_joints"].tolist() + self.values["finger_joints"].tolist()
 
         return action_array
 
@@ -592,8 +634,6 @@ class server_state():
 
         return new_env_state
 
-
-
 class GraspObjectUR5(UR5RobotiqEnv):
     def _reward(self, rs_state, action):
         reward = 0
@@ -610,7 +650,7 @@ class GraspObjectUR5(UR5RobotiqEnv):
         
         joint_positions_normalized=ur_utils.UR5ROBOTIQ(self.robotiq).normalize_ur_joint_dict(joint_dict=rs_state.state["ur_j_pos"])
 
-        delta = np.abs(np.subtract(joint_positions_normalized.get_values_std_order(), action.values["ur_j_pos"].get_values_std_order() ))
+        delta = np.abs(np.subtract(joint_positions_normalized.get_values_std_order(), action.joints["ur_j_pos"].get_values_std_order() ))
         reward = reward - (0.05 * np.sum(delta))
 
         if euclidean_dist_3d <= self.distance_threshold:
@@ -637,7 +677,7 @@ class GraspObjectUR5(UR5RobotiqEnv):
             info['target_coord'] = target_coord
 
         return reward, done, info
-    
+
 
 class GraspObjectUR5Sim(GraspObjectUR5, Simulation):
     #cmd = "roslaunch ur_robot_server ur5Robotiq_sim_robot_server.launch \
