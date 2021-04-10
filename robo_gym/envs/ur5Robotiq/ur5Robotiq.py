@@ -688,6 +688,7 @@ class GraspObjectUR5Sim(GraspObjectUR5, Simulation):
     cmd = "roslaunch ur_robot_server ur5Robotiq_sim_robot_server.launch \
         max_velocity_scale_factor:=0.2 \
         action_cycle_rate:=20 \
+        world_name:=cubes.world\
         rviz_gui:=true \
         gazebo_gui:=true"
     def __init__(self, ip=None, lower_bound_port=None, upper_bound_port=None, gui=False, **kwargs):
