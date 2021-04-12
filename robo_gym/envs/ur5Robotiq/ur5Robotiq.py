@@ -127,12 +127,9 @@ class UR5RobotiqEnv(gym.Env):
         # Reading robot server state#
         #############################
 
-        #Get current state and validade
-        self.state, rs_state =self._get_current_env_state()
-        print("rs_state.get_server_message")
-        print(rs_state.get_server_message())
-        print("self.state.to_array()")
-        print(self.state.to_array())
+        #Get current state, update obs space with cubes and validate
+        self.state, rs_state =self._get_current_env_state_and_update_observation_space()
+
         # check if current position is in the range of the initial joint positions
         if (len(self.last_position_on_success) == 0) or (type=='random'):
             joint_positions=rs_state.get_state()["ur_j_pos"].get_values_std_order()
@@ -242,6 +239,37 @@ class UR5RobotiqEnv(gym.Env):
 
         return spaces.Box(low=min_obs, high=max_obs, dtype=np.float32)
 
+    def _get_observation_space_with_cubes(self, number_of_cubes):
+        """Get environment observation space.
+
+        Returns:
+            gym.spaces: Gym observation space object.
+
+        """
+
+        # Joint position range tolerance
+        pos_tolerance = np.full(self.ur5.number_of_joint_positions,0.1)
+        # Joint positions range used to determine if there is an error in the sensor readings
+        max_joint_positions = np.add(np.full(self.number_of_joints, 1.0), pos_tolerance)
+        min_joint_positions = np.subtract(np.full(self.number_of_joints, -1.0), pos_tolerance)
+        # Target coordinates range
+        target_range = np.full(3, np.inf)
+        # Joint positions range tolerance
+        vel_tolerance = np.full(self.number_of_joints,0.5)
+        # Joint velocities range used to determine if there is an error in the sensor readings
+        max_joint_velocities = np.add(self.ur5.get_max_joint_velocities().get_values_std_order(), vel_tolerance)
+        min_joint_velocities = np.subtract(self.ur5.get_min_joint_velocities().get_values_std_order(), vel_tolerance)
+        #cubes xyzrpy max min
+        max_1_cube_pos=[ 0.9,  0.9, np.inf,  np.pi,  np.pi,  np.pi]
+        min_1_cube_pos=[-0.9, -0.9,      0, -np.pi, -np.pi, -np.pi]
+        max_n_cube_pos=np.array(max_1_cube_pos*number_of_cubes)
+        min_n_cube_pos=np.array(min_1_cube_pos*number_of_cubes)
+        # Definition of environment observation_space
+        max_obs = np.concatenate(( target_range, max_joint_positions, max_joint_velocities, max_n_cube_pos))
+        min_obs = np.concatenate((-target_range, min_joint_positions, min_joint_velocities, min_n_cube_pos))
+
+        return spaces.Box(low=min_obs, high=max_obs, dtype=np.float32)
+
     def _get_action_space(self):
         
         self.action_space = spaces.Dict({
@@ -273,6 +301,39 @@ class UR5RobotiqEnv(gym.Env):
 
         # Convert the initial state from Robot Server format to environment format
         new_state = rs_state.server_state_to_env_state(robotiq=self.robotiq)
+
+        # Check if the environment state is contained in the observation space
+        if not self.observation_space.contains(new_state.to_array() ):
+            raise InvalidStateError()
+
+        return new_state, rs_state
+
+    def _get_current_env_state_and_update_observation_space(self):
+        """Requests the current robot state (simulated or real), updates obs space according to the number of cubes
+
+        Args:
+            NaN
+
+        Returns:
+            new_state (env_state): Current state in environment format.
+            rs_state (server_state): State in Robot Server format.
+
+        """
+
+        # Get Robot Server state
+        rs_state=server_state()
+        rs_state.set_server_from_message(np.nan_to_num(np.array(self.client.get_state_msg().state)))
+
+        # Check if the length of the Robot Server state received is correct
+        #if not len(rs_state)== self._get_robot_server_state_len():
+        #    raise InvalidStateError("Robot Server state received has wrong length")
+
+        # Convert the initial state from Robot Server format to environment format
+        new_state = rs_state.server_state_to_env_state(robotiq=self.robotiq)
+
+
+        #updates observation space according to the number of cubes
+        self.observation_space=self._get_observation_space_with_cubes(new_state.number_of_cubes)
 
         # Check if the environment state is contained in the observation space
         if not self.observation_space.contains(new_state.to_array() ):
@@ -345,7 +406,7 @@ class env_state():
         
         self.state["ur_j_vel"]=copy.deepcopy(ur_joint_state)
 
-    def update_cubes_pose(self, new_cubes_pose):
+    def update_cubes_pose(self, new_cubes_pose, number_of_cubes):
         """
         Updates the cubes' pose :
         
@@ -357,6 +418,7 @@ class env_state():
         """
         
         self.state["cubes_pose"]=copy.deepcopy(new_cubes_pose)
+        self.number_of_cubes=number_of_cubes
 
     def to_array(self):
         """
@@ -368,9 +430,10 @@ class env_state():
 
         Returns:
             env_array (list): ordered list containing the current environment's state. The array includes the following: target_polar + ur_j_pos (std order) + ur_j_vel (std_order)
+            for the cubes_pose, the id is ignored [1:]
         """
-
-        env_array= self.state["target_polar"].tolist() + self.state["ur_j_pos"].get_values_std_order().tolist() + self.state["ur_j_vel"].get_values_std_order().tolist() 
+        
+        env_array= self.state["target_polar"].tolist() + self.state["ur_j_pos"].get_values_std_order().tolist() + self.state["ur_j_vel"].get_values_std_order().tolist() + self.state["cubes_pose"].reshape(-1)[1:].tolist() #cubes_pose, except id
 
         return env_array
 
@@ -598,6 +661,7 @@ class server_state():
         """
         cubes_info_len=7
         how_many_cubes=int(len(new_cubes_pose)/cubes_info_len)
+        self.number_of_cubes=how_many_cubes
         
         self.state["cubes_pose"]=np.zeros((how_many_cubes, cubes_info_len), dtype=np.float32)
         for i in range(how_many_cubes):
@@ -671,8 +735,8 @@ class server_state():
         ur_j_pos_norm=ur_utils.UR5ROBOTIQ(robotiq).normalize_ur_joint_dict(joint_dict=self.state["ur_j_pos"])
         new_env_state.update_ur_j_pos(ur_j_pos_norm)
         new_env_state.update_ur_j_vel(self.state["ur_j_vel"])
-        new_env_state.update_cubes_pose(self.state["cubes_pose"])
-
+        new_env_state.update_cubes_pose(self.state["cubes_pose"], self.number_of_cubes)
+        
         return new_env_state
 
 class GraspObjectUR5(UR5RobotiqEnv):
