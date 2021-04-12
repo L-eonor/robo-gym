@@ -120,16 +120,18 @@ class UR5RobotiqEnv(gym.Env):
         # Set initial state of the Robot Server
         state_msg = robot_server_pb2.State(state = rs_state.get_server_message() )
 
-
-        #############################
-        # Reading robot server state#
-        #############################
         if not self.client.set_state_msg(state_msg):
             raise RobotServerError("set_state")
         
+        #############################
+        # Reading robot server state#
+        #############################
+
         #Get current state and validade
         self.state, rs_state =self._get_current_env_state()
+        print("rs_state.get_server_message")
         print(rs_state.get_server_message())
+        print("self.state.to_array()")
         print(self.state.to_array())
         # check if current position is in the range of the initial joint positions
         if (len(self.last_position_on_success) == 0) or (type=='random'):
@@ -137,8 +139,6 @@ class UR5RobotiqEnv(gym.Env):
             tolerance = 0.1
             for joint in range(len(joint_positions)):
                 if (joint_positions[joint]+tolerance < self.initial_joint_positions_low[joint]) or  (joint_positions[joint]-tolerance  > self.initial_joint_positions_high[joint]):
-                    print(joint)
-                    print(joint_positions[joint])
                     raise InvalidStateError('Reset joint positions are not within defined range')
 
 
@@ -463,6 +463,7 @@ class server_state():
             * ur_j_vel          (ur_joint_dict) : joint velocities (with zeros)
             * ee_base_transform (np.array)      : end effector base transform
             * collision         (np.array)      : collision array
+            * cubes_pose        (np.array)      : where are the cubes?
         """
         
         self.state={
@@ -470,7 +471,8 @@ class server_state():
             "ur_j_pos": ur_utils.UR5ROBOTIQ().ur_joint_dict(),
             "ur_j_vel": ur_utils.UR5ROBOTIQ().ur_joint_dict(),
             "ee_base_transform": np.zeros(7, dtype=np.float32),
-            "collision": np.zeros(1, dtype=np.float32)
+            "collision": np.zeros(1, dtype=np.float32),
+            "cubes_pose": None
         }
 
     def get_state(self):
@@ -566,6 +568,26 @@ class server_state():
         """
         self.state["collision"]=np.array(new_collision_state)
 
+    def update_cubes_pose(self, new_cubes_pose):
+        """
+        Updates the cubes position
+        Each cube is associated with 7 values: #0->id, #1-> x, #2->y, #3-> z, #4->r, #5->p, #6->y
+        
+        Args:
+            new_cubes_pose (array like): cubes positioning
+
+        Returns:
+            none
+        """
+        cubes_info_len=7
+        how_many_cubes=int(len(new_cubes_pose)/cubes_info_len)
+        
+        self.state["cubes_pose"]=np.zeros((how_many_cubes, cubes_info_len), dtype=np.float32)
+        for i in range(how_many_cubes):
+            self.state["cubes_pose"][ i, : ]=copy.deepcopy(np.array(new_cubes_pose[i*cubes_info_len:(i+1)*cubes_info_len]))
+
+        
+
     def set_server_from_message(self, msg):
         """
         Updates the state values: target, position, velocity, ee base transform and collition. Uses the info retrieved from the server by the corresponding message array
@@ -590,12 +612,13 @@ class server_state():
         e= d + len(self.state["ee_base_transform"])
         f= e + len(self.state["collision"])
 
-        #coppies info in the appropriate format
+        #copies info in the appropriate format
         self.update_target_pose(       msg[ a:b ] )
         self.update_ur_joint_pos(      ur_utils.UR5ROBOTIQ().ur_joint_dict().set_values_ros_order(msg[ b:c ]) )
         self.update_ur_joint_vel(      ur_utils.UR5ROBOTIQ().ur_joint_dict().set_values_ros_order(msg[ c:d ] ))
         self.update_ee_base_transform (msg[ d:e ] )
         self.update_collision(         msg[ e:f ] )
+        self.update_cubes_pose(        msg[ f:  ] )
         
     def server_state_to_env_state(self, robotiq=85):
         """
@@ -688,9 +711,9 @@ class GraspObjectUR5Sim(GraspObjectUR5, Simulation):
     cmd = "roslaunch ur_robot_server ur5Robotiq_sim_robot_server.launch \
         max_velocity_scale_factor:=0.2 \
         action_cycle_rate:=20 \
-        world_name:=cubes.world\
-        rviz_gui:=true \
-        gazebo_gui:=true"
+        world_name:=cubes.world \
+        rviz_gui:=false \
+        gazebo_gui:=false"
     def __init__(self, ip=None, lower_bound_port=None, upper_bound_port=None, gui=False, **kwargs):
         Simulation.__init__(self, self.cmd, ip, lower_bound_port, upper_bound_port, gui, **kwargs)
         GraspObjectUR5.__init__(self, rs_address=self.robot_server_ip, robotiq=85, **kwargs)
