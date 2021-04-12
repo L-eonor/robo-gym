@@ -287,6 +287,7 @@ class env_state():
         * target (np.array) pose in polar coordinates 
         * ur_j_pos (ur_joint_dict)-> robots' joint angles in a ur_joint_dict 
         * ur_j_vel (ur_joint_dict) -> robots' joint velocities in a ur_joint_dict
+        * cubes_pose (np.array) -> cubes' pose in xyzrpy
 
     """
     
@@ -296,11 +297,13 @@ class env_state():
             * target_polar (np.array)      : target pose in polar coordinates
             * ur_j_pos     (ur_joint_dict) : joint positions in angles (with zeros)
             * ur_j_vel     (ur_joint_dict) : joint velocities (with zeros)
+            * cubes_pose (np.array) -> cubes' pose in xyzrpy
         """
         self.state={
             "target_polar": np.zeros(3, dtype=np.float32),
             "ur_j_pos": ur_utils.UR5ROBOTIQ().ur_joint_dict(),
             "ur_j_vel": ur_utils.UR5ROBOTIQ().ur_joint_dict(),
+            "cubes_pose": []
         }
     
     def update_target_polar(self, target_polar):
@@ -341,6 +344,19 @@ class env_state():
         """
         
         self.state["ur_j_vel"]=copy.deepcopy(ur_joint_state)
+
+    def update_cubes_pose(self, new_cubes_pose):
+        """
+        Updates the cubes' pose :
+        
+        Args:
+            new_cubes_pose (np.array): cubes position, new values
+
+        Returns:
+            none
+        """
+        
+        self.state["cubes_pose"]=copy.deepcopy(new_cubes_pose)
 
     def to_array(self):
         """
@@ -452,6 +468,7 @@ class server_state():
 
         * ee_base_transform-> array len=7
         * collision-> array len=1
+        * cubes_pose-> array len=7 #id, x, y, z, r, p, y
 
     """
     
@@ -463,7 +480,7 @@ class server_state():
             * ur_j_vel          (ur_joint_dict) : joint velocities (with zeros)
             * ee_base_transform (np.array)      : end effector base transform
             * collision         (np.array)      : collision array
-            * cubes_pose        (np.array)      : where are the cubes?
+            * cubes_pose        (np.array)      : where are the cubes? #id xyzrpy
         """
         
         self.state={
@@ -472,7 +489,7 @@ class server_state():
             "ur_j_vel": ur_utils.UR5ROBOTIQ().ur_joint_dict(),
             "ee_base_transform": np.zeros(7, dtype=np.float32),
             "collision": np.zeros(1, dtype=np.float32),
-            "cubes_pose": None
+            "cubes_pose": None #id xyzrpy
         }
 
     def get_state(self):
@@ -654,6 +671,7 @@ class server_state():
         ur_j_pos_norm=ur_utils.UR5ROBOTIQ(robotiq).normalize_ur_joint_dict(joint_dict=self.state["ur_j_pos"])
         new_env_state.update_ur_j_pos(ur_j_pos_norm)
         new_env_state.update_ur_j_vel(self.state["ur_j_vel"])
+        new_env_state.update_cubes_pose(self.state["cubes_pose"])
 
         return new_env_state
 
