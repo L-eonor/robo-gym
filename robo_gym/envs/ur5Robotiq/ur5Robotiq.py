@@ -747,9 +747,7 @@ class server_state():
             none
         """
 
-        self.state["cubes_destination_pose"]=np.array(new_cubes_destination)
-
-        
+        self.state["cubes_destination_pose"]=np.array(new_cubes_destination)  
 
     def set_server_from_message(self, msg):
         """
@@ -823,6 +821,56 @@ class server_state():
         return new_env_state
 
 class GraspObjectUR5(UR5RobotiqEnv):
+    def _distance_to_goal(self, goal_a, goal_b):
+        assert goal_a.shape == goal_b.shape
+
+        return np.linalg.norm(goal_a - goal_b, axis=-1)
+
+    def _reward(self, rs_state, action):
+        reward = 0
+        done = False
+        info = {}
+
+        # Calculate distance to the target
+        cubes_destination_pose = np.array(rs_state.state["cubes_destination_pose"])[0:3]
+        cube_real_pose         = np.array(rs_state.state["cubes_pose"][ 0, : ])[0:3]  #for now, requests the obly cube's pose
+        euclidean_dist_3d      = self._distance_to_goal(cubes_destination_pose, cube_real_pose)
+
+        # Reward base
+        reward = -1 * euclidean_dist_3d
+        
+        #Evaluate joint space
+        joint_positions_normalized=ur_utils.UR5ROBOTIQ(self.robotiq).normalize_ur_joint_dict(joint_dict=rs_state.state["ur_j_pos"])
+        delta = np.abs(np.subtract(joint_positions_normalized.get_values_std_order(), action.joints["ur_j_pos"].get_values_std_order() ))
+        reward = reward - (0.05 * np.sum(delta))
+
+        if euclidean_dist_3d <= self.distance_threshold:
+            reward = 100
+            done = True
+            info['final_status'] = 'success'
+            info['cubes_destination_pose'] = cubes_destination_pose
+
+        # Check if robot is in collision
+        if rs_state.state["collision"] [-1] == 1:
+            collision = True
+        else:
+            collision = False
+
+        if collision:
+            reward = -400
+            done = True
+            info['final_status'] = 'collision'
+            info['cubes_destination_pose'] = cubes_destination_pose
+
+        if self.elapsed_steps >= self.max_episode_steps:
+            done = True
+            info['final_status'] = 'max_steps_exceeded'
+            info['cubes_destination_pose'] = cubes_destination_pose
+
+        return reward, done, info
+
+
+    """        
     def _reward(self, rs_state, action):
         reward = 0
         done = False
@@ -865,7 +913,7 @@ class GraspObjectUR5(UR5RobotiqEnv):
             info['target_coord'] = target_coord
 
         return reward, done, info
-
+    """
 
 class GraspObjectUR5Sim(GraspObjectUR5, Simulation):
     #cmd = "roslaunch ur_robot_server ur5Robotiq_sim_robot_server.launch \
