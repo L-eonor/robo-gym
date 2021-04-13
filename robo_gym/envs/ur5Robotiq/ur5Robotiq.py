@@ -77,7 +77,7 @@ class UR5RobotiqEnv(gym.Env):
         self.np_random, seed = seeding.np_random(seed)
         return [seed]
 
-    def reset(self, initial_joint_positions = None, ee_target_pose = None, type='random'):
+    def reset(self, initial_joint_positions = None, ee_target_pose = None, cube_destination_pose = None, type='random'):
         """Environment reset.
 
         Args:
@@ -116,6 +116,13 @@ class UR5RobotiqEnv(gym.Env):
         else:
             ee_target_pose = self._get_target_pose()
         rs_state.update_target_pose(ee_target_pose)
+
+        # Set target cube destination pose
+        if cube_destination_pose:
+            assert len(cube_destination_pose) == self.rs_state__destination_len #6
+        else:
+            cube_destination_pose = self._get_cube_destination()
+        #rs_state.update_target_pose(cube_destination_pose)
 
         # Set initial state of the Robot Server
         state_msg = robot_server_pb2.State(state = rs_state.get_server_message() )
@@ -211,7 +218,46 @@ class UR5RobotiqEnv(gym.Env):
 
         """
 
-        return self.ur5.get_random_workspace_pose()
+        target_pose = self.ur5.get_random_workspace_pose()
+        self.rs_state__target_len = len(target_pose)
+
+        return target_pose
+
+    def _get_cube_destination(self):
+        pose=np.zeros(6)
+
+        singularity_area = True
+
+        # check if generated x,y,z are in singularityarea
+        while singularity_area:
+            # Generate random uniform sample in semisphere taking advantage of the
+            # sampling rule
+
+            # UR5 workspace radius
+            # Max d = 1.892
+            R =  0.900 # reduced slightly
+
+            #phi = np.random.default_rng().uniform(low= 0.0, high= 2*np.pi)
+            phi = np.random.uniform(low= 0.0, high= 2*np.pi)
+            #costheta = np.random.default_rng().uniform(low= 0.0, high= 1.0) # [-1.0,1.0] for a sphere
+            costheta = 0
+            #u = np.random.default_rng().uniform(low= 0.0, high= 1.0)
+            u = np.random.uniform(low= 0.0, high= 1.0)
+
+            theta = np.arccos(costheta)
+            r = R * np.cbrt(u)
+
+            x = r * np.sin(theta) * np.cos(phi)
+            y = r * np.sin(theta) * np.sin(phi)
+            z = r * np.cos(theta)
+
+            if (x**2 + y**2) > 0.085**2:
+                singularity_area = False
+
+        pose[:3]=[x, y, z]
+
+        self.rs_state__destination_len = len(pose)
+        return pose
 
     def _get_observation_space(self):
         """Get environment observation space.
@@ -240,7 +286,7 @@ class UR5RobotiqEnv(gym.Env):
         return spaces.Box(low=min_obs, high=max_obs, dtype=np.float32)
 
     def _get_observation_space_with_cubes(self, number_of_cubes):
-        """Get environment observation space.
+        """Get environment observation space, considering the cubes positioning
 
         Returns:
             gym.spaces: Gym observation space object.
@@ -349,6 +395,7 @@ class env_state():
         * ur_j_pos (ur_joint_dict)-> robots' joint angles in a ur_joint_dict 
         * ur_j_vel (ur_joint_dict) -> robots' joint velocities in a ur_joint_dict
         * cubes_pose (np.array) -> cubes' pose in xyzrpy
+        * cubes_destination_pose (np.array) -> cubes' destination pose in xyzrpy
 
     """
     
@@ -359,12 +406,14 @@ class env_state():
             * ur_j_pos     (ur_joint_dict) : joint positions in angles (with zeros)
             * ur_j_vel     (ur_joint_dict) : joint velocities (with zeros)
             * cubes_pose (np.array) -> cubes' pose in xyzrpy
+            * cubes_destination_pose (np.array)-> cubes' new pose in xyzrpy
         """
         self.state={
             "target_polar": np.zeros(3, dtype=np.float32),
             "ur_j_pos": ur_utils.UR5ROBOTIQ().ur_joint_dict(),
             "ur_j_vel": ur_utils.UR5ROBOTIQ().ur_joint_dict(),
-            "cubes_pose": []
+            "cubes_pose": [],
+            "cubes_destination_pose": []
         }
     
     def update_target_polar(self, target_polar):
@@ -419,6 +468,19 @@ class env_state():
         
         self.state["cubes_pose"]=copy.deepcopy(new_cubes_pose)
         self.number_of_cubes=number_of_cubes
+
+    def update_cube_destination(self, new_cubes_destination):
+        """
+        Updates the cube destination:
+        
+        Args:
+            new_cubes_destination (array like): new target point in xyzrpy
+
+        Returns:
+            none
+        """
+
+        self.state["cubes_destination_pose"]=np.array(new_cubes_destination)
 
     def to_array(self):
         """
@@ -532,6 +594,7 @@ class server_state():
         * ee_base_transform-> array len=7
         * collision-> array len=1
         * cubes_pose-> array len=7 #id, x, y, z, r, p, y
+        * cubes_destination_pose-> array len=7 #id, x, y, z, r, p, y
 
     """
     
@@ -544,6 +607,7 @@ class server_state():
             * ee_base_transform (np.array)      : end effector base transform
             * collision         (np.array)      : collision array
             * cubes_pose        (np.array)      : where are the cubes? #id xyzrpy
+            * cubes_destination_pose (np.array) : where to move the cubes? xyzrpy
         """
         
         self.state={
@@ -552,7 +616,8 @@ class server_state():
             "ur_j_vel": ur_utils.UR5ROBOTIQ().ur_joint_dict(),
             "ee_base_transform": np.zeros(7, dtype=np.float32),
             "collision": np.zeros(1, dtype=np.float32),
-            "cubes_pose": None #id xyzrpy
+            "cubes_pose": None, #id xyzrpy
+            "cubes_destination_pose": None #id xyzrpy
         }
 
     def get_state(self):
@@ -667,6 +732,19 @@ class server_state():
         for i in range(how_many_cubes):
             self.state["cubes_pose"][ i, : ]=copy.deepcopy(np.array(new_cubes_pose[i*cubes_info_len:(i+1)*cubes_info_len]))
 
+    def update_cube_destination(self, new_cubes_destination):
+        """
+        Updates the cube destination:
+        
+        Args:
+            new_cubes_destination (array like): new target point in xyzrpy
+
+        Returns:
+            none
+        """
+
+        self.state["cubes_destination_pose"]=np.array(new_cubes_destination)
+
         
 
     def set_server_from_message(self, msg):
@@ -736,6 +814,7 @@ class server_state():
         new_env_state.update_ur_j_pos(ur_j_pos_norm)
         new_env_state.update_ur_j_vel(self.state["ur_j_vel"])
         new_env_state.update_cubes_pose(self.state["cubes_pose"], self.number_of_cubes)
+        new_env_state.update_cube_destination(self.state["cubes_destination_pose"])
         
         return new_env_state
 
