@@ -62,7 +62,6 @@ class UR5RobotiqEnv(gym.Env):
         # Initialize environment state
         self.state = env_state()
 
-
         self.last_position_on_success = []
         
 
@@ -122,7 +121,7 @@ class UR5RobotiqEnv(gym.Env):
             assert len(cube_destination_pose) == self.rs_state__destination_len #6
         else:
             cube_destination_pose = self._get_cube_destination()
-        #rs_state.update_target_pose(cube_destination_pose)
+        self.cube_destination_pose = cube_destination_pose
 
         # Set initial state of the Robot Server
         state_msg = robot_server_pb2.State(state = rs_state.get_server_message() )
@@ -310,9 +309,12 @@ class UR5RobotiqEnv(gym.Env):
         min_1_cube_pos=[-0.9, -0.9,      0, -np.pi, -np.pi, -np.pi]
         max_n_cube_pos=np.array(max_1_cube_pos*number_of_cubes)
         min_n_cube_pos=np.array(min_1_cube_pos*number_of_cubes)
+        #cubes destination point xyzrpy max min
+        max_cube_destination_pos=[ 0.9,  0.9, np.inf,  np.pi,  np.pi,  np.pi]
+        min_cube_destination_pos=[-0.9, -0.9,      0, -np.pi, -np.pi, -np.pi]
         # Definition of environment observation_space
-        max_obs = np.concatenate(( target_range, max_joint_positions, max_joint_velocities, max_n_cube_pos))
-        min_obs = np.concatenate((-target_range, min_joint_positions, min_joint_velocities, min_n_cube_pos))
+        max_obs = np.concatenate(( target_range, max_joint_positions, max_joint_velocities, max_n_cube_pos, max_cube_destination_pos))
+        min_obs = np.concatenate((-target_range, min_joint_positions, min_joint_velocities, min_n_cube_pos, min_cube_destination_pos))
 
         return spaces.Box(low=min_obs, high=max_obs, dtype=np.float32)
 
@@ -340,6 +342,7 @@ class UR5RobotiqEnv(gym.Env):
         # Get Robot Server state
         rs_state=server_state()
         rs_state.set_server_from_message(np.nan_to_num(np.array(self.client.get_state_msg().state)))
+        rs_state.update_cube_destination(self.cube_destination_pose)
 
         # Check if the length of the Robot Server state received is correct
         #if not len(rs_state)== self._get_robot_server_state_len():
@@ -369,6 +372,7 @@ class UR5RobotiqEnv(gym.Env):
         # Get Robot Server state
         rs_state=server_state()
         rs_state.set_server_from_message(np.nan_to_num(np.array(self.client.get_state_msg().state)))
+        rs_state.update_cube_destination(self.cube_destination_pose)
 
         # Check if the length of the Robot Server state received is correct
         #if not len(rs_state)== self._get_robot_server_state_len():
@@ -484,8 +488,8 @@ class env_state():
 
     def to_array(self):
         """
-        Retrieves the current state as a list. The order is: (target_polar + ur_j_pos + ur_j_vel )
-        The ur_j_pos and ur_j_vel are displayed in standard order (from base to end effector)
+        Retrieves the current state as a list. The order is: (target_polar + ur_j_pos + ur_j_vel + cubes_pose + cubes_destination_pose)
+        The ur_j_pos and ur_j_vel are displayed in standard order (from base to end effector). Cubes pose ignores index 0 = cube id
         
         Args:
             None
@@ -495,7 +499,7 @@ class env_state():
             for the cubes_pose, the id is ignored [1:]
         """
         
-        env_array= self.state["target_polar"].tolist() + self.state["ur_j_pos"].get_values_std_order().tolist() + self.state["ur_j_vel"].get_values_std_order().tolist() + self.state["cubes_pose"].reshape(-1)[1:].tolist() #cubes_pose, except id
+        env_array= self.state["target_polar"].tolist() + self.state["ur_j_pos"].get_values_std_order().tolist() + self.state["ur_j_vel"].get_values_std_order().tolist() + self.state["cubes_pose"].reshape(-1)[1:].tolist() + self.state["cubes_destination_pose"].tolist()
 
         return env_array
 
