@@ -147,7 +147,7 @@ class UR5RobotiqEnv(gym.Env):
 
         # go one empty action and check if there is a collision
         action = action_state().get_action_from_env_state(self.state) 
-        _, _, done, info = self.step(action)
+        _, _, done, info = self.step(action.values)
         self.elapsed_steps = 0
         if done:
             raise InvalidStateError('Reset started in a collision state')
@@ -161,14 +161,16 @@ class UR5RobotiqEnv(gym.Env):
         self.elapsed_steps += 1
 
         # Check if the action is within the action space
-        assert self.action_space.contains(action.values ), "%r (%s) invalid" % (action, type(action))
+        assert self.action_space.contains(action ), "%r (%s) invalid" % (action, type(action))
 
         # Convert environment action to Robot Server action
-        rs_action = copy.deepcopy(action)
+        rs_action = action_state() #copy.deepcopy(action)
         # Scale action
-        rs_action.update_action(np.multiply(rs_action.joints["ur_j_pos"].get_values_std_order(), self.abs_joint_pos_range.get_values_std_order() ) )
+        action_values_std_order=action["arm_joints"].tolist() + [ action["finger_joints"] ]
+        rs_action.update_action(np.multiply(action_values_std_order, self.abs_joint_pos_range.get_values_std_order() ) )
         # Convert action indexing from ur5 to ros
         rs_action = rs_action.joints["ur_j_pos"].get_values_ros_order()
+
         # Send action to Robot Server
         if not self.client.send_action(rs_action.tolist()):
             raise RobotServerError("send_action")
@@ -194,7 +196,7 @@ class UR5RobotiqEnv(gym.Env):
         IMPORTANT: gripper should start fully open (max=min=0)
         '''
         self.initial_joint_positions_low = np.array([-0.65, -2.75, 1.0, -3.14, -1.7, -3.14, 0.0])
-        self.initial_joint_positions_high = np.array([0.65, -2.0, 2.5, 3.14, -1.0, 3.14, 0.0])
+        self.initial_joint_positions_high = np.array([0.65, -2.0, 2.5, 3.14, -1.0, 3.14, 0.85])
 
     def _get_initial_joint_positions(self):
         """Generate random initial robot joint positions.
@@ -507,7 +509,11 @@ class action_state():
     """
     Encapsulates an action
     Includes: 
-        * ur_j_pos (ur_joint_dict) -> robots' joint angles in a ur_joint_dict
+        joints -> dict structure
+            * ur_j_pos     (ur_joint_dict) : joint positions in angles (with zeros)
+        values -> np arrays, by standard order. Divides arm joints from finger joints to make gripper vs arm controller easier
+            * arm_joints (np.array), joints in std order
+            * finger_joints (np.array), joints in std order
     """
     
     def __init__(self):
@@ -841,7 +847,8 @@ class GraspObjectUR5(UR5RobotiqEnv):
         
         #Evaluate joint space
         joint_positions_normalized=ur_utils.UR5ROBOTIQ(self.robotiq).normalize_ur_joint_dict(joint_dict=rs_state.state["ur_j_pos"])
-        delta = np.abs(np.subtract(joint_positions_normalized.get_values_std_order(), action.joints["ur_j_pos"].get_values_std_order() ))
+        action_values_std_order=action["arm_joints"].tolist() + [ action["finger_joints"] ]
+        delta = np.abs(np.subtract(joint_positions_normalized.get_values_std_order(), action_values_std_order ))
         reward = reward - (0.05 * np.sum(delta))
 
         if euclidean_dist_3d <= self.distance_threshold:
