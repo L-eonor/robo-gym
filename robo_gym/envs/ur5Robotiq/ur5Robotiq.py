@@ -262,7 +262,7 @@ class UR5RobotiqEnv(gym.Env):
 
     def _get_observation_space(self):
         """Get environment observation space.
-        (target_polar + ur_j_pos + ur_j_vel + gripper_pose)
+        (ur_j_pos + ur_j_vel + gripper_pose)
 
         Returns:
             gym.spaces: Gym observation space object.
@@ -274,25 +274,26 @@ class UR5RobotiqEnv(gym.Env):
         # Joint positions range used to determine if there is an error in the sensor readings
         max_joint_positions = np.add(np.full(self.number_of_joints, 1.0), pos_tolerance)
         min_joint_positions = np.subtract(np.full(self.number_of_joints, -1.0), pos_tolerance)
-        # Target coordinates range
-        target_range = np.full(3, np.inf)
+        
         # Joint positions range tolerance
         vel_tolerance = np.full(self.number_of_joints,0.5)
         # Joint velocities range used to determine if there is an error in the sensor readings
         max_joint_velocities = np.add(self.ur5.get_max_joint_velocities().get_values_std_order(), vel_tolerance)
         min_joint_velocities = np.subtract(self.ur5.get_min_joint_velocities().get_values_std_order(), vel_tolerance)
+
         #gripper pose
         max_gripper_pose=[ 0.9,  0.9,  0.9,  np.pi,  np.pi,  np.pi]
         min_gripper_pose=[-0.9, -0.9, -0.9,  -np.pi, -np.pi, -np.pi]
+
         # Definition of environment observation_space
-        max_obs = np.concatenate(( target_range, max_joint_positions, max_joint_velocities, max_gripper_pose))
-        min_obs = np.concatenate((-target_range, min_joint_positions, min_joint_velocities, min_gripper_pose))
+        max_obs = np.concatenate(( max_joint_positions, max_joint_velocities, max_gripper_pose))
+        min_obs = np.concatenate(( min_joint_positions, min_joint_velocities, min_gripper_pose))
 
         return spaces.Box(low=min_obs, high=max_obs, dtype=np.float32)
 
     def _get_observation_space_with_cubes(self, number_of_cubes):
         """Get environment observation space, considering the cubes positioning
-        (target_polar + ur_j_pos + ur_j_vel + gripper_pose + cubes_pose + cubes_destination_pose)
+        (ur_j_pos + ur_j_vel + gripper_pose + cubes_pose + cubes_destination_pose)
 
         Returns:
             gym.spaces: Gym observation space object.
@@ -304,16 +305,17 @@ class UR5RobotiqEnv(gym.Env):
         # Joint positions range used to determine if there is an error in the sensor readings
         max_joint_positions = np.add(np.full(self.number_of_joints, 1.0), pos_tolerance)
         min_joint_positions = np.subtract(np.full(self.number_of_joints, -1.0), pos_tolerance)
-        # Target coordinates range
-        target_range = np.full(3, np.inf)
+        
         # Joint positions range tolerance
         vel_tolerance = np.full(self.number_of_joints,0.5)
         # Joint velocities range used to determine if there is an error in the sensor readings
         max_joint_velocities = np.add(self.ur5.get_max_joint_velocities().get_values_std_order(), vel_tolerance)
         min_joint_velocities = np.subtract(self.ur5.get_min_joint_velocities().get_values_std_order(), vel_tolerance)
+
         #gripper pose
         max_gripper_pose=[ 0.9,  0.9,  0.9,  np.pi,  np.pi,  np.pi]
-        min_gripper_pose=[-0.9, -0.9, -0.9,  -np.pi, -np.pi, -np.pi]
+        min_gripper_pose=[-0.9, -0.9, -0.9, -np.pi, -np.pi, -np.pi]
+
         #cubes xyzrpy max min
         max_1_cube_pos=[ 0.9,  0.9, np.inf,  np.pi,  np.pi,  np.pi]
         min_1_cube_pos=[-0.9, -0.9,      0, -np.pi, -np.pi, -np.pi]
@@ -322,9 +324,10 @@ class UR5RobotiqEnv(gym.Env):
         #cubes destination point xyzrpy max min
         max_cube_destination_pos=[ 0.9,  0.9, np.inf,  np.pi,  np.pi,  np.pi]
         min_cube_destination_pos=[-0.9, -0.9,      0, -np.pi, -np.pi, -np.pi]
+
         # Definition of environment observation_space
-        max_obs = np.concatenate(( target_range, max_joint_positions, max_joint_velocities, max_gripper_pose, max_n_cube_pos, max_cube_destination_pos))
-        min_obs = np.concatenate((-target_range, min_joint_positions, min_joint_velocities, min_gripper_pose, min_n_cube_pos, min_cube_destination_pos))
+        max_obs = np.concatenate(( max_joint_positions, max_joint_velocities, max_gripper_pose, max_n_cube_pos, max_cube_destination_pos))
+        min_obs = np.concatenate(( min_joint_positions, min_joint_velocities, min_gripper_pose, min_n_cube_pos, min_cube_destination_pos))
 
         return spaces.Box(low=min_obs, high=max_obs, dtype=np.float32)
 
@@ -363,6 +366,9 @@ class UR5RobotiqEnv(gym.Env):
 
         # Check if the environment state is contained in the observation space
         if not self.observation_space.contains(new_state.to_array() ):
+            print(new_state.to_array())
+            print(self.observation_space.high)
+            print(self.observation_space.low)      
             raise InvalidStateError()
 
         return new_state, rs_state
@@ -397,6 +403,9 @@ class UR5RobotiqEnv(gym.Env):
 
         # Check if the environment state is contained in the observation space
         if not self.observation_space.contains(new_state.to_array() ):
+            print(new_state.to_array())
+            print(self.observation_space.high)
+            print(self.observation_space.low)            
             raise InvalidStateError()
 
         return new_state, rs_state
@@ -405,7 +414,6 @@ class env_state():
     """
     Encapsulates the environment state
     Includes:
-        * target (np.array) pose in polar coordinates 
         * ur_j_pos (ur_joint_dict)-> robots' joint angles in a ur_joint_dict 
         * ur_j_vel (ur_joint_dict) -> robots' joint velocities in a ur_joint_dict
         * gripper_pose (np.array) -> gripper's pose in xyzrpy
@@ -417,7 +425,6 @@ class env_state():
     def __init__(self):
         """
         Populates the structure with:
-            * target_polar (np.array)      : target pose in polar coordinates
             * ur_j_pos     (ur_joint_dict) : joint positions in angles (with zeros)
             * ur_j_vel     (ur_joint_dict) : joint velocities (with zeros)
             * gripper_pose (np.array) -> gripper's pose in xyzrpy
@@ -425,7 +432,6 @@ class env_state():
             * cubes_destination_pose (np.array)-> cubes' new pose in xyzrpy
         """
         self.state={
-            "target_polar": np.zeros(3, dtype=np.float32),
             "ur_j_pos": ur_utils.UR5ROBOTIQ().ur_joint_dict(),
             "ur_j_vel": ur_utils.UR5ROBOTIQ().ur_joint_dict(),
             "gripper_pose": np.zeros(6, dtype=np.float32),
@@ -433,19 +439,6 @@ class env_state():
             "cubes_destination_pose": []
         }
     
-    def update_target_polar(self, target_polar):
-        """
-        Updates the target coordinates:
-        
-        Args:
-            target_polar (array like): new target point in polar coordinates
-
-        Returns:
-            none
-        """
-
-        self.state["target_polar"]=np.array(target_polar)
-
     def update_ur_j_pos(self, ur_joint_state):
         """
         Updates the joints' positions in angles :
@@ -513,7 +506,7 @@ class env_state():
 
     def to_array(self):
         """
-        Retrieves the current state as a list. The order is: (target_polar + ur_j_pos + ur_j_vel + gripper_pose + cubes_pose + cubes_destination_pose)
+        Retrieves the current state as a list. The order is: ( ur_j_pos + ur_j_vel + gripper_pose + cubes_pose + cubes_destination_pose)
         The ur_j_pos and ur_j_vel are displayed in standard order (from base to end effector). Cubes pose ignores index 0 = cube id
         
         Args:
@@ -524,7 +517,7 @@ class env_state():
             for the cubes_pose, the id is ignored [1:]
         """
         
-        env_array= self.state["target_polar"].tolist() + self.state["ur_j_pos"].get_values_std_order().tolist() + self.state["ur_j_vel"].get_values_std_order().tolist() + self.state["gripper_pose"].tolist() + self.state["cubes_pose"].reshape(-1)[1:].tolist() + self.state["cubes_destination_pose"].tolist()
+        env_array= self.state["ur_j_pos"].get_values_std_order().tolist() + self.state["ur_j_vel"].get_values_std_order().tolist() + self.state["gripper_pose"].tolist() + self.state["cubes_pose"].reshape(-1)[1:].tolist() + self.state["cubes_destination_pose"].tolist()
 
         return env_array
 
@@ -844,22 +837,22 @@ class server_state():
 
         # Transform cartesian coordinates of target to polar coordinates 
         # with respect to the end effector frame
-        target_coord = np.nan_to_num(self.state["target_xyzrpy"])[0:3]
-        ee_base_transform =   np.nan_to_num(self.state["ee_base_transform"])
+        #target_coord = np.nan_to_num(self.state["target_xyzrpy"])[0:3]
+        #ee_base_transform =   np.nan_to_num(self.state["ee_base_transform"])
         
-        ee_to_base_translation = ee_base_transform[0:3]
-        ee_to_base_quaternion = ee_base_transform[3:8]
-        ee_to_base_rotation = R.from_quat(ee_to_base_quaternion)
-        base_to_ee_rotation = ee_to_base_rotation.inv()
-        base_to_ee_quaternion = base_to_ee_rotation.as_quat()
-        base_to_ee_translation = - ee_to_base_translation
+        #ee_to_base_translation = ee_base_transform[0:3]
+        #ee_to_base_quaternion = ee_base_transform[3:8]
+        #ee_to_base_rotation = R.from_quat(ee_to_base_quaternion)
+        #base_to_ee_rotation = ee_to_base_rotation.inv()
+        #base_to_ee_quaternion = base_to_ee_rotation.as_quat()
+        #base_to_ee_translation = - ee_to_base_translation
 
-        target_coord_ee_frame = utils.change_reference_frame(target_coord,base_to_ee_translation,base_to_ee_quaternion)
-        target_polar = utils.cartesian_to_polar_3d(target_coord_ee_frame)
+        #target_coord_ee_frame = utils.change_reference_frame(target_coord,base_to_ee_translation,base_to_ee_quaternion)
+        #target_polar = utils.cartesian_to_polar_3d(target_coord_ee_frame)
 
 
         ##update
-        new_env_state.update_target_polar(target_polar)
+        #new_env_state.update_target_polar(target_polar)
         ur_j_pos_norm=ur_utils.UR5ROBOTIQ(robotiq).normalize_ur_joint_dict(joint_dict=self.state["ur_j_pos"])
         new_env_state.update_ur_j_pos(ur_j_pos_norm)
         new_env_state.update_ur_j_vel(self.state["ur_j_vel"])
