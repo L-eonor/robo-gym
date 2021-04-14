@@ -262,6 +262,7 @@ class UR5RobotiqEnv(gym.Env):
 
     def _get_observation_space(self):
         """Get environment observation space.
+        (target_polar + ur_j_pos + ur_j_vel + gripper_pose)
 
         Returns:
             gym.spaces: Gym observation space object.
@@ -280,14 +281,18 @@ class UR5RobotiqEnv(gym.Env):
         # Joint velocities range used to determine if there is an error in the sensor readings
         max_joint_velocities = np.add(self.ur5.get_max_joint_velocities().get_values_std_order(), vel_tolerance)
         min_joint_velocities = np.subtract(self.ur5.get_min_joint_velocities().get_values_std_order(), vel_tolerance)
+        #gripper pose
+        max_gripper_pose=[ 0.9,  0.9,  0.9,  np.pi,  np.pi,  np.pi]
+        min_gripper_pose=[-0.9, -0.9, -0.9,  -np.pi, -np.pi, -np.pi]
         # Definition of environment observation_space
-        max_obs = np.concatenate((target_range, max_joint_positions, max_joint_velocities))
-        min_obs = np.concatenate((-target_range, min_joint_positions, min_joint_velocities))
+        max_obs = np.concatenate(( target_range, max_joint_positions, max_joint_velocities, max_gripper_pose))
+        min_obs = np.concatenate((-target_range, min_joint_positions, min_joint_velocities, min_gripper_pose))
 
         return spaces.Box(low=min_obs, high=max_obs, dtype=np.float32)
 
     def _get_observation_space_with_cubes(self, number_of_cubes):
         """Get environment observation space, considering the cubes positioning
+        (target_polar + ur_j_pos + ur_j_vel + gripper_pose + cubes_pose + cubes_destination_pose)
 
         Returns:
             gym.spaces: Gym observation space object.
@@ -306,6 +311,9 @@ class UR5RobotiqEnv(gym.Env):
         # Joint velocities range used to determine if there is an error in the sensor readings
         max_joint_velocities = np.add(self.ur5.get_max_joint_velocities().get_values_std_order(), vel_tolerance)
         min_joint_velocities = np.subtract(self.ur5.get_min_joint_velocities().get_values_std_order(), vel_tolerance)
+        #gripper pose
+        max_gripper_pose=[ 0.9,  0.9,  0.9,  np.pi,  np.pi,  np.pi]
+        min_gripper_pose=[-0.9, -0.9, -0.9,  -np.pi, -np.pi, -np.pi]
         #cubes xyzrpy max min
         max_1_cube_pos=[ 0.9,  0.9, np.inf,  np.pi,  np.pi,  np.pi]
         min_1_cube_pos=[-0.9, -0.9,      0, -np.pi, -np.pi, -np.pi]
@@ -315,8 +323,8 @@ class UR5RobotiqEnv(gym.Env):
         max_cube_destination_pos=[ 0.9,  0.9, np.inf,  np.pi,  np.pi,  np.pi]
         min_cube_destination_pos=[-0.9, -0.9,      0, -np.pi, -np.pi, -np.pi]
         # Definition of environment observation_space
-        max_obs = np.concatenate(( target_range, max_joint_positions, max_joint_velocities, max_n_cube_pos, max_cube_destination_pos))
-        min_obs = np.concatenate((-target_range, min_joint_positions, min_joint_velocities, min_n_cube_pos, min_cube_destination_pos))
+        max_obs = np.concatenate(( target_range, max_joint_positions, max_joint_velocities, max_gripper_pose, max_n_cube_pos, max_cube_destination_pos))
+        min_obs = np.concatenate((-target_range, min_joint_positions, min_joint_velocities, min_gripper_pose, min_n_cube_pos, min_cube_destination_pos))
 
         return spaces.Box(low=min_obs, high=max_obs, dtype=np.float32)
 
@@ -505,18 +513,18 @@ class env_state():
 
     def to_array(self):
         """
-        Retrieves the current state as a list. The order is: (target_polar + ur_j_pos + ur_j_vel + cubes_pose + cubes_destination_pose)
+        Retrieves the current state as a list. The order is: (target_polar + ur_j_pos + ur_j_vel + gripper_pose + cubes_pose + cubes_destination_pose)
         The ur_j_pos and ur_j_vel are displayed in standard order (from base to end effector). Cubes pose ignores index 0 = cube id
         
         Args:
             None
 
         Returns:
-            env_array (list): ordered list containing the current environment's state. The array includes the following: target_polar + ur_j_pos (std order) + ur_j_vel (std_order)
+            env_array (list): ordered list containing the current environment's state. The array includes the following: target_polar + ur_j_pos (std order) + ur_j_vel (std_order)+ gripper_pose + cubes_pose + cubes_destination_pose
             for the cubes_pose, the id is ignored [1:]
         """
         
-        env_array= self.state["target_polar"].tolist() + self.state["ur_j_pos"].get_values_std_order().tolist() + self.state["ur_j_vel"].get_values_std_order().tolist() + self.state["cubes_pose"].reshape(-1)[1:].tolist() + self.state["cubes_destination_pose"].tolist()
+        env_array= self.state["target_polar"].tolist() + self.state["ur_j_pos"].get_values_std_order().tolist() + self.state["ur_j_vel"].get_values_std_order().tolist() + self.state["gripper_pose"].tolist() + self.state["cubes_pose"].reshape(-1)[1:].tolist() + self.state["cubes_destination_pose"].tolist()
 
         return env_array
 
