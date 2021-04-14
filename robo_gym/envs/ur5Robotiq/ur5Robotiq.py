@@ -282,8 +282,9 @@ class UR5RobotiqEnv(gym.Env):
         min_joint_velocities = np.subtract(self.ur5.get_min_joint_velocities().get_values_std_order(), vel_tolerance)
 
         #gripper pose
-        max_gripper_pose=[ 0.9,  0.9,  0.9,  np.pi,  np.pi,  np.pi]
-        min_gripper_pose=[-0.9, -0.9, -0.9,  -np.pi, -np.pi, -np.pi]
+        #increase a little bit because 0.85m is the arm length
+        max_gripper_pose=[ 1,  1,  1,  np.pi,  np.pi,  np.pi]
+        min_gripper_pose=[-1, -1, -1, -np.pi, -np.pi, -np.pi]
 
         # Definition of environment observation_space
         max_obs = np.concatenate(( max_joint_positions, max_joint_velocities, max_gripper_pose))
@@ -313,21 +314,25 @@ class UR5RobotiqEnv(gym.Env):
         min_joint_velocities = np.subtract(self.ur5.get_min_joint_velocities().get_values_std_order(), vel_tolerance)
 
         #gripper pose
-        max_gripper_pose=[ 0.9,  0.9,  0.9,  np.pi,  np.pi,  np.pi]
-        min_gripper_pose=[-0.9, -0.9, -0.9, -np.pi, -np.pi, -np.pi]
+        #increase a little bit because 0.85m is the arm length and angles in 0.01 because of precision
+        angle_tolerance=0.001
+        abs_max_angle=np.pi + angle_tolerance #+/-pi precision might fall off space limits
+
+        max_gripper_pose=[ 1,  1,  1,  abs_max_angle,  abs_max_angle,  abs_max_angle]
+        min_gripper_pose=[-1, -1, -1, -abs_max_angle, -abs_max_angle, -abs_max_angle]
 
         #gripper_to_obj_dist
-        max_gripper_to_obj_pose=[ 2* 0.9, 2* 0.9, 2* 0.9,  np.pi,  np.pi,  np.pi]
-        min_gripper_to_obj_pose=[ 2*-0.9, 2*-0.9, 2*-0.9, -np.pi, -np.pi, -np.pi]
+        max_gripper_to_obj_pose=[ 2* 0.9, 2* 0.9, 2* 0.9]#,  abs_max_angle,  abs_max_angle,  abs_max_angle]
+        min_gripper_to_obj_pose=[ 2*-0.9, 2*-0.9, 2*-0.9]#, -abs_max_angle, -abs_max_angle, -abs_max_angle]
 
         #cubes xyzrpy max min
-        max_1_cube_pos=[ 0.9,  0.9, np.inf,  np.pi,  np.pi,  np.pi]
-        min_1_cube_pos=[-0.9, -0.9,      0, -np.pi, -np.pi, -np.pi]
+        max_1_cube_pos=[ 0.9,  0.9, np.inf,  abs_max_angle,  abs_max_angle,  abs_max_angle]
+        min_1_cube_pos=[-0.9, -0.9,      0, -abs_max_angle, -abs_max_angle, -abs_max_angle]
         max_n_cube_pos=np.array(max_1_cube_pos*number_of_cubes)
         min_n_cube_pos=np.array(min_1_cube_pos*number_of_cubes)
         #cubes destination point xyzrpy max min
-        max_cube_destination_pos=[ 0.9,  0.9, np.inf,  np.pi,  np.pi,  np.pi]
-        min_cube_destination_pos=[-0.9, -0.9,      0, -np.pi, -np.pi, -np.pi]
+        max_cube_destination_pos=[ 0.9,  0.9, np.inf,  abs_max_angle,  abs_max_angle,  abs_max_angle]
+        min_cube_destination_pos=[-0.9, -0.9,      0, -abs_max_angle, -abs_max_angle, -abs_max_angle]
 
         # Definition of environment observation_space
         max_obs = np.concatenate(( max_joint_positions, max_joint_velocities, max_gripper_pose, max_gripper_to_obj_pose, max_n_cube_pos, max_cube_destination_pos))
@@ -520,9 +525,9 @@ class env_state():
             env_array (list): ordered list containing the current environment's state. The array includes the following: target_polar + ur_j_pos (std order) + ur_j_vel (std_order)+ gripper_pose + cubes_pose + cubes_destination_pose
             for the cubes_pose, the id is ignored [1:]
         """
-        gripper_to_obj_dist=np.linalg.norm(self.state["gripper_pose"][0:3] - self.state["cubes_pose"][0, 0:3], axis=-1)
+        gripper_to_obj_pose=self.state["gripper_pose"][0:3] - self.state["cubes_pose"][0, 0:3]
 
-        env_array= self.state["ur_j_pos"].get_values_std_order().tolist() + self.state["ur_j_vel"].get_values_std_order().tolist() + self.state["gripper_pose"].tolist() + [gripper_to_obj_dist] + self.state["cubes_pose"].reshape(-1)[1:].tolist() + self.state["cubes_destination_pose"].tolist()
+        env_array= self.state["ur_j_pos"].get_values_std_order().tolist() + self.state["ur_j_vel"].get_values_std_order().tolist() + self.state["gripper_pose"].tolist() + gripper_to_obj_pose.tolist() + self.state["cubes_pose"].reshape(-1)[1:].tolist() + self.state["cubes_destination_pose"].tolist()
 
         return env_array
 
@@ -880,7 +885,7 @@ class GraspObjectUR5(UR5RobotiqEnv):
 
         # Calculate distance to the target
         cubes_destination_pose = np.array(rs_state.state["cubes_destination_pose"])[0:3]
-        cube_real_pose         = np.array(rs_state.state["cubes_pose"][ 0, : ])[0:3]  #for now, requests the obly cube's pose
+        cube_real_pose         = np.array(rs_state.state["cubes_pose"][ 0, : ])[0:3]  #for now, requests the only cube's pose
         euclidean_dist_3d      = self._distance_to_goal(cubes_destination_pose, cube_real_pose)
 
         # Reward base
