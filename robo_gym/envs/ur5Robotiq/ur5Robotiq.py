@@ -139,9 +139,14 @@ class UR5RobotiqEnv(gym.Env):
         # check if current position is in the range of the initial joint positions
         if (len(self.last_position_on_success) == 0) or (type=='random'):
             joint_positions=rs_state.get_state()["ur_j_pos"].get_values_std_order()
-            tolerance = 0.1
+            tolerance = self.distance_threshold
+
             for joint in range(len(joint_positions)):
                 if (joint_positions[joint]+tolerance < self.initial_joint_positions_low[joint]) or  (joint_positions[joint]-tolerance  > self.initial_joint_positions_high[joint]):
+                    print(joint)
+                    print(joint_positions[joint])
+                    print(self.initial_joint_positions_low[joint])
+                    print(self.initial_joint_positions_high[joint])
                     raise InvalidStateError('Reset joint positions are not within defined range')
 
 
@@ -149,7 +154,7 @@ class UR5RobotiqEnv(gym.Env):
         action = action_state().get_action_from_env_state(self.state) 
         _, _, done, info = self.step(action.values)
         self.elapsed_steps = 0
-        if done:
+        if done and info['final_status'] == 'collision':
             raise InvalidStateError('Reset started in a collision state')
             
         return self.state.to_array()
@@ -270,7 +275,7 @@ class UR5RobotiqEnv(gym.Env):
         """
 
         # Joint position range tolerance
-        pos_tolerance = np.full(self.ur5.number_of_joint_positions,0.1)
+        pos_tolerance = np.full(self.ur5.number_of_joint_positions, self.distance_threshold)
         # Joint positions range used to determine if there is an error in the sensor readings
         max_joint_positions = np.add(np.full(self.number_of_joints, 1.0), pos_tolerance)
         min_joint_positions = np.subtract(np.full(self.number_of_joints, -1.0), pos_tolerance)
@@ -302,7 +307,7 @@ class UR5RobotiqEnv(gym.Env):
         """
 
         # Joint position range tolerance
-        pos_tolerance = np.full(self.ur5.number_of_joint_positions,0.1)
+        pos_tolerance = np.full(self.ur5.number_of_joint_positions,self.distance_threshold)
         # Joint positions range used to determine if there is an error in the sensor readings
         max_joint_positions = np.add(np.full(self.number_of_joints, 1.0), pos_tolerance)
         min_joint_positions = np.subtract(np.full(self.number_of_joints, -1.0), pos_tolerance)
@@ -314,12 +319,12 @@ class UR5RobotiqEnv(gym.Env):
         min_joint_velocities = np.subtract(self.ur5.get_min_joint_velocities().get_values_std_order(), vel_tolerance)
 
         #gripper pose
-        #increase a little bit because 0.85m is the arm length and angles in 0.01 because of precision
+        #increase a little bit because 0.85m is the arm length and angles in 0.001 because of precision (pi)
         angle_tolerance=0.001
         abs_max_angle=np.pi + angle_tolerance #+/-pi precision might fall off space limits
 
-        max_gripper_pose=[ 1,  1,  1,  abs_max_angle,  abs_max_angle,  abs_max_angle]
-        min_gripper_pose=[-1, -1, -1, -abs_max_angle, -abs_max_angle, -abs_max_angle]
+        max_gripper_pose=[ 1.1,  1.1,  1.1,  abs_max_angle,  abs_max_angle,  abs_max_angle]
+        min_gripper_pose=[-1.1, -1.1, -1.1, -abs_max_angle, -abs_max_angle, -abs_max_angle]
 
         #gripper_to_obj_dist
         max_gripper_to_obj_pose=[ 2* 0.9, 2* 0.9, 2* 0.9]#,  abs_max_angle,  abs_max_angle,  abs_max_angle]
@@ -513,6 +518,13 @@ class env_state():
 
         self.state["cubes_destination_pose"]=np.array(new_cubes_destination)
 
+    def _get_target_to_gripper(self):
+        """
+        Returns the object position in relation to gripper
+        """
+
+        return self.state["cubes_pose"][0, 0:3] - self.state["gripper_pose"][0:3]
+
     def to_array(self):
         """
         Retrieves the current state as a list. The order is: ( ur_j_pos + ur_j_vel + gripper_pose + gripper_to_obj_dist + cubes_pose + cubes_destination_pose)
@@ -525,7 +537,7 @@ class env_state():
             env_array (list): ordered list containing the current environment's state. The array includes the following: target_polar + ur_j_pos (std order) + ur_j_vel (std_order)+ gripper_pose + cubes_pose + cubes_destination_pose
             for the cubes_pose, the id is ignored [1:]
         """
-        gripper_to_obj_pose=self.state["gripper_pose"][0:3] - self.state["cubes_pose"][0, 0:3]
+        gripper_to_obj_pose = self._get_target_to_gripper()
 
         env_array= self.state["ur_j_pos"].get_values_std_order().tolist() + self.state["ur_j_vel"].get_values_std_order().tolist() + self.state["gripper_pose"].tolist() + gripper_to_obj_pose.tolist() + self.state["cubes_pose"].reshape(-1)[1:].tolist() + self.state["cubes_destination_pose"].tolist()
 
@@ -884,18 +896,23 @@ class GraspObjectUR5(UR5RobotiqEnv):
         info = {}
 
         # Calculate distance to the target
+        #desired goal
         cubes_destination_pose = np.array(rs_state.state["cubes_destination_pose"])[0:3]
+        #achieved goal
         cube_real_pose         = np.array(rs_state.state["cubes_pose"][ 0, : ])[0:3]  #for now, requests the only cube's pose
+        #euclidean norm
         euclidean_dist_3d      = self._distance_to_goal(cubes_destination_pose, cube_real_pose)
 
         # Reward base
         reward = -1 * euclidean_dist_3d
         
-        #Evaluate joint space
-        joint_positions_normalized=ur_utils.UR5ROBOTIQ(self.robotiq).normalize_ur_joint_dict(joint_dict=rs_state.state["ur_j_pos"])
-        action_values_std_order=action["arm_joints"].tolist() + [ action["finger_joints"] ]
-        delta = np.abs(np.subtract(joint_positions_normalized.get_values_std_order(), action_values_std_order ))
-        reward = reward - (0.05 * np.sum(delta))
+        
+        #IMPORTANT NOT TO RESTRICT JOINTS THIS MUCH
+        # #Evaluate joint space        
+        #joint_positions_normalized=ur_utils.UR5ROBOTIQ(self.robotiq).normalize_ur_joint_dict(joint_dict=rs_state.state["ur_j_pos"])
+        #action_values_std_order=action["arm_joints"].tolist() + [ action["finger_joints"] ]
+        #delta = np.abs(np.subtract(joint_positions_normalized.get_values_std_order(), action_values_std_order ))
+        #reward = reward - (0.05 * np.sum(delta))
 
         if euclidean_dist_3d <= self.distance_threshold:
             reward = 100
