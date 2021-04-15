@@ -369,6 +369,10 @@ class UR5RobotiqEnv(gym.Env):
         # Get Robot Server state
         rs_state=server_state()
         rs_state.set_server_from_message(np.nan_to_num(np.array(self.client.get_state_msg().state)))
+        #force destination pose to be over the second cube (index 1), excluding #id
+        self.cube_destination_pose=copy.deepcopy(rs_state.state["cubes_pose"][1, 1:])
+        self.cube_destination_pose[2]=self.cube_destination_pose[2]*3 #to be placed on top of the other (3x the center of mass)
+
         rs_state.update_cube_destination(self.cube_destination_pose)
 
         # Check if the length of the Robot Server state received is correct
@@ -402,6 +406,10 @@ class UR5RobotiqEnv(gym.Env):
         # Get Robot Server state
         rs_state=server_state()
         rs_state.set_server_from_message(np.nan_to_num(np.array(self.client.get_state_msg().state)))
+        #force destination pose to be over the second cube (index 1), excluding #id
+        self.cube_destination_pose=copy.deepcopy(rs_state.state["cubes_pose"][1, 1:])
+        self.cube_destination_pose[2]=self.cube_destination_pose[2]*3 #to be placed on top of the other (3x the center of mass)
+
         rs_state.update_cube_destination(self.cube_destination_pose)
 
         # Check if the length of the Robot Server state received is correct
