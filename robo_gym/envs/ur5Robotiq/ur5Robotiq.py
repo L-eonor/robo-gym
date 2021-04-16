@@ -320,25 +320,28 @@ class UR5RobotiqEnv(gym.Env):
         min_joint_velocities = np.subtract(self.ur5.get_min_joint_velocities().get_values_std_order(), vel_tolerance)
 
         #gripper pose
-        #increase a little bit because 0.85m is the arm length and angles in 0.001 because of precision (pi)
+        #increase a little bit
+        # * arm length=0.85m is the arm + gripper attatcher + finger offset + arm above the ground
+        # * angles in 0.001 because of precision (pi)
+        gripper_tolerance=0.5
+        max_gripper_pose=0.85+gripper_tolerance
         angle_tolerance=0.001
         abs_max_angle=np.pi + angle_tolerance #+/-pi precision might fall off space limits
-
-        max_gripper_pose=[ 1.1,  1.1,  1.1,  abs_max_angle,  abs_max_angle,  abs_max_angle]
-        min_gripper_pose=[-1.1, -1.1, -1.1, -abs_max_angle, -abs_max_angle, -abs_max_angle]
+        max_gripper_pose=[ max_gripper_pose,  max_gripper_pose,  max_gripper_pose,  abs_max_angle,  abs_max_angle,  abs_max_angle]
+        min_gripper_pose=[-max_gripper_pose, -max_gripper_pose, -max_gripper_pose, -abs_max_angle, -abs_max_angle, -abs_max_angle]
 
         #gripper_to_obj_dist
-        max_gripper_to_obj_pose=[ 2* 0.9, 2* 0.9, 2* 0.9]#,  abs_max_angle,  abs_max_angle,  abs_max_angle]
-        min_gripper_to_obj_pose=[ 2*-0.9, 2*-0.9, 2*-0.9]#, -abs_max_angle, -abs_max_angle, -abs_max_angle]
+        max_gripper_to_obj_pose=[ 2* max_gripper_pose, 2* max_gripper_pose, 2* max_gripper_pose]#,  abs_max_angle,  abs_max_angle,  abs_max_angle]
+        min_gripper_to_obj_pose=[ 2*-max_gripper_pose, 2*-max_gripper_pose, 2*-max_gripper_pose]#, -abs_max_angle, -abs_max_angle, -abs_max_angle]
 
         #cubes xyzrpy max min
-        max_1_cube_pos=[ 0.9,  0.9, np.inf,  abs_max_angle,  abs_max_angle,  abs_max_angle]
-        min_1_cube_pos=[-0.9, -0.9,      0, -abs_max_angle, -abs_max_angle, -abs_max_angle]
+        max_1_cube_pos=[ max_gripper_pose,  max_gripper_pose, np.inf,  abs_max_angle,  abs_max_angle,  abs_max_angle]
+        min_1_cube_pos=[-max_gripper_pose, -max_gripper_pose,      0, -abs_max_angle, -abs_max_angle, -abs_max_angle]
         max_n_cube_pos=np.array(max_1_cube_pos*number_of_cubes)
         min_n_cube_pos=np.array(min_1_cube_pos*number_of_cubes)
         #cubes destination point xyzrpy max min
-        max_cube_destination_pos=[ 0.9,  0.9, np.inf,  abs_max_angle,  abs_max_angle,  abs_max_angle]
-        min_cube_destination_pos=[-0.9, -0.9,      0, -abs_max_angle, -abs_max_angle, -abs_max_angle]
+        max_cube_destination_pos=[ max_gripper_pose,  max_gripper_pose, np.inf,  abs_max_angle,  abs_max_angle,  abs_max_angle]
+        min_cube_destination_pos=[-max_gripper_pose, -max_gripper_pose,      0, -abs_max_angle, -abs_max_angle, -abs_max_angle]
 
         # Definition of environment observation_space
         max_obs = np.concatenate(( max_joint_positions, max_joint_velocities, max_gripper_pose, max_gripper_to_obj_pose, max_n_cube_pos, max_cube_destination_pos))
