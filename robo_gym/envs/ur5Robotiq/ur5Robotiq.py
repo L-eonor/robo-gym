@@ -54,7 +54,8 @@ class UR5RobotiqEnv(gym.Env):
         self.seed()
 
         #observation space
-        self.observation_space = self._get_observation_space()
+        #self.observation_space = self._get_observation_space()
+        self.observation_space = self._get_observation_space_with_cubes(number_of_cubes=2)
 
         #action space
         self.action_space = self._get_action_space()
@@ -152,7 +153,7 @@ class UR5RobotiqEnv(gym.Env):
 
         # go one empty action and check if there is a collision
         action = action_state().get_action_from_env_state(self.state) 
-        _, _, done, info = self.step(action.values)
+        _, _, done, info = self.step( action.action_as_box() ) 
         self.elapsed_steps = 0
         if done and info['final_status'] == 'collision':
             raise InvalidStateError('Reset started in a collision state')
@@ -171,8 +172,8 @@ class UR5RobotiqEnv(gym.Env):
         # Convert environment action to Robot Server action
         rs_action = action_state() #copy.deepcopy(action)
         # Scale action
-        action_values_std_order=action["arm_joints"].tolist() + [ action["finger_joints"] ]
-        rs_action.update_action(np.multiply(action_values_std_order, self.abs_joint_pos_range.get_values_std_order() ) )
+        #action_values_std_order=action["arm_joints"].tolist() + [ action["finger_joints"] ]
+        rs_action.update_action(np.multiply(action, self.abs_joint_pos_range.get_values_std_order() ) )
         # Convert action indexing from ur5 to ros
         rs_action = rs_action.joints["ur_j_pos"].get_values_ros_order()
 
@@ -188,7 +189,7 @@ class UR5RobotiqEnv(gym.Env):
         done = False
         reward, done, info = self._reward(rs_state=rs_state, action=action)
 
-        return self.state, reward, done, info
+        return self.state.to_array(), reward, done, info
 
     def render():
         pass
@@ -346,11 +347,13 @@ class UR5RobotiqEnv(gym.Env):
         return spaces.Box(low=min_obs, high=max_obs, dtype=np.float32)
 
     def _get_action_space(self):
-        
+        """
         self.action_space = spaces.Dict({
             "arm_joints"    : spaces.Box(low=np.full((self.number_of_arm_joints), -1.0), high=np.full((self.number_of_arm_joints), 1.0), dtype=np.float32),
             "finger_joints" : spaces.Discrete (2) #0-open; 1-close
         })
+        """
+        self.action_space = spaces.Box(low=np.full((self.number_of_joints), -1.0), high=np.full((self.number_of_joints), 1.0), dtype=np.float32)
         
         return self.action_space
 
@@ -601,6 +604,7 @@ class action_state():
     def update_action(self, new_action_std_order):
         """
         Updates the action joints (joint angles), based on array passed in standard order (base to end effector)
+        finger action either 0-open, 1-close
         
         Args:
             new_action_std_order (np array): array in std order indicating joint values
@@ -614,7 +618,6 @@ class action_state():
 
         #finger action either 0-open, 1-close
         for key in self.joints["ur_j_pos"].finger_joints:
-            finger_real_value=self.joints["ur_j_pos"].joints[key]
             self.joints["ur_j_pos"].joints[key] = int(0) if self.joints["ur_j_pos"].joints[key] < self.finger_threshold else int(1)
 
         #updates arm and finger arrays
@@ -623,6 +626,24 @@ class action_state():
 
 
         return self
+
+    def action_as_box(self):
+        """
+        Updates the action joints (joint angles), based on array passed in standard order (base to end effector)
+        finger action either 0-open, 1-close
+        
+        Args:
+            new_action_std_order (np array): array in std order indicating joint values
+
+        Returns:
+        """
+        arm_joints=copy.deepcopy(self.values ["arm_joints"])
+        finger_joint = copy.deepcopy(self.values ["finger_joints"])
+
+        #converts from box (required to run baselines) to driver encoding 0-> open , 1->close
+        finger_joint= float(-1) if finger_joint < self.finger_threshold else int(1)
+
+        return arm_joints.tolist() + [finger_joint]
         
     def to_array(self):
         """
@@ -1004,8 +1025,8 @@ class GraspObjectUR5Sim(GraspObjectUR5, Simulation):
         max_velocity_scale_factor:=0.2 \
         action_cycle_rate:=20 \
         world_name:=cubes.world \
-        rviz_gui:=false \
-        gazebo_gui:=false"
+        rviz_gui:=false" #\
+        #gazebo_gui:=false"
     def __init__(self, ip=None, lower_bound_port=None, upper_bound_port=None, gui=False, **kwargs):
         Simulation.__init__(self, self.cmd, ip, lower_bound_port, upper_bound_port, gui, **kwargs)
         GraspObjectUR5.__init__(self, rs_address=self.robot_server_ip, robotiq=85, **kwargs)
