@@ -13,7 +13,7 @@ import robo_gym_server_modules.robot_server.client as rs_client
 from robo_gym.envs.simulation_wrapper import Simulation
 from robo_gym_server_modules.robot_server.grpc_msgs.python import robot_server_pb2
 
-class UR5RobotiqEnv(gym.Env):
+class UR5RobotiqEnv(gym.GoalEnv):
     """Universal Robots UR5 base environment.
 
     Args:
@@ -54,8 +54,7 @@ class UR5RobotiqEnv(gym.Env):
         self.seed()
 
         #observation space
-        #self.observation_space = self._get_observation_space()
-        self.observation_space = self._get_observation_space_with_cubes(number_of_cubes=2)
+        self.observation_space = self._get_observation_space_with_cubes(number_of_cubes=1)
 
         #action space
         self.action_space = self._get_action_space()
@@ -158,7 +157,8 @@ class UR5RobotiqEnv(gym.Env):
         if done and info['final_status'] == 'collision':
             raise InvalidStateError('Reset started in a collision state')
             
-        return self.state.to_array()
+        #return self.state.to_array()
+        return self.state.get_obs()
 
     def _reward(self, rs_state, action):
         return 0, False, {}
@@ -166,6 +166,7 @@ class UR5RobotiqEnv(gym.Env):
     def step(self, action):
         self.elapsed_steps += 1
 
+        action = np.clip(action, self.action_space.low, self.action_space.high)
         # Check if the action is within the action space
         assert self.action_space.contains(action ), "%r (%s) invalid" % (action, type(action))
 
@@ -185,11 +186,17 @@ class UR5RobotiqEnv(gym.Env):
         self.state, rs_state =self._get_current_env_state()
 
         # Assign reward
+        obs = self.state.get_obs()
         reward = 0
         done = False
-        reward, done, info = self._reward(rs_state=rs_state, action=action)
+        info = {
+            'is_success': self._is_success(obs['achieved_goal'], obs['desired_goal']),
+        }
+        #reward, done, info = self._reward(rs_state=rs_state, action=action)
+        reward = self.compute_reward(np.array(rs_state.state["cubes_pose"][ 0, : ])[0:3], np.array(rs_state.state["cubes_destination_pose"])[0:3], info=info)
 
-        return self.state.to_array(), reward, done, info
+        #return self.state.to_array(), reward, done, info
+        return obs, reward, done, info
 
     def render():
         pass
@@ -266,38 +273,6 @@ class UR5RobotiqEnv(gym.Env):
         self.rs_state__destination_len = len(pose)
         return pose
 
-    def _get_observation_space(self):
-        """Get environment observation space.
-        (ur_j_pos + ur_j_vel + gripper_pose)
-
-        Returns:
-            gym.spaces: Gym observation space object.
-
-        """
-
-        # Joint position range tolerance
-        pos_tolerance = np.full(self.ur5.number_of_joint_positions, self.distance_threshold)
-        # Joint positions range used to determine if there is an error in the sensor readings
-        max_joint_positions = np.add(np.full(self.number_of_joints, 1.0), pos_tolerance)
-        min_joint_positions = np.subtract(np.full(self.number_of_joints, -1.0), pos_tolerance)
-        
-        # Joint positions range tolerance
-        vel_tolerance = np.full(self.number_of_joints,0.5)
-        # Joint velocities range used to determine if there is an error in the sensor readings
-        max_joint_velocities = np.add(self.ur5.get_max_joint_velocities().get_values_std_order(), vel_tolerance)
-        min_joint_velocities = np.subtract(self.ur5.get_min_joint_velocities().get_values_std_order(), vel_tolerance)
-
-        #gripper pose
-        #increase a little bit because 0.85m is the arm length
-        max_gripper_pose=[ 1,  1,  1,  np.pi,  np.pi,  np.pi]
-        min_gripper_pose=[-1, -1, -1, -np.pi, -np.pi, -np.pi]
-
-        # Definition of environment observation_space
-        max_obs = np.concatenate(( max_joint_positions, max_joint_velocities, max_gripper_pose))
-        min_obs = np.concatenate(( min_joint_positions, min_joint_velocities, min_gripper_pose))
-
-        return spaces.Box(low=min_obs, high=max_obs, dtype=np.float32)
-
     def _get_observation_space_with_cubes(self, number_of_cubes):
         """Get environment observation space, considering the cubes positioning
         ( ur_j_pos + ur_j_vel + gripper_pose + gripper_to_obj_dist + cubes_pose + cubes_destination_pose)
@@ -344,10 +319,34 @@ class UR5RobotiqEnv(gym.Env):
         min_cube_destination_pos=[-abs_max_gripper_pose, -abs_max_gripper_pose,      0, -abs_max_angle, -abs_max_angle, -abs_max_angle]
 
         # Definition of environment observation_space
-        max_obs = np.concatenate(( max_joint_positions, max_joint_velocities, max_gripper_pose, max_gripper_to_obj_pose, max_n_cube_pos, max_cube_destination_pos))
-        min_obs = np.concatenate(( min_joint_positions, min_joint_velocities, min_gripper_pose, min_gripper_to_obj_pose, min_n_cube_pos, min_cube_destination_pos))
+        #max_obs = np.concatenate(( max_joint_positions, max_joint_velocities, max_gripper_pose, max_gripper_to_obj_pose, max_n_cube_pos, max_cube_destination_pos))
+        #min_obs = np.concatenate(( min_joint_positions, min_joint_velocities, min_gripper_pose, min_gripper_to_obj_pose, min_n_cube_pos, min_cube_destination_pos))
+        #
+        # return spaces.Box(low=min_obs, high=max_obs, dtype=np.float32)
 
-        return spaces.Box(low=min_obs, high=max_obs, dtype=np.float32)
+        max_observation = np.concatenate(( max_joint_positions, max_joint_velocities, max_gripper_pose, max_gripper_to_obj_pose))
+        min_observation = np.concatenate(( min_joint_positions, min_joint_velocities, min_gripper_pose, min_gripper_to_obj_pose))
+
+        max_achieved_goal = np.array(max_n_cube_pos)
+        min_achieved_goal = np.array(min_n_cube_pos)
+
+        max_desired_goal = np.array(max_cube_destination_pos)
+        min_desired_goal = np.array(min_cube_destination_pos)
+
+        self.observation_space = spaces.Dict(dict(
+            desired_goal =spaces.Box(low=min_desired_goal,  high=max_desired_goal,  dtype='float32'),
+            achieved_goal=spaces.Box(low=min_achieved_goal, high=max_achieved_goal, dtype='float32'),
+            observation  =spaces.Box(low=min_observation,   high=max_observation,   dtype='float32'),
+        ))
+        return self.observation_space
+
+    def _is_success(self, achieved_goal, desired_goal):
+        assert achieved_goal.shape == desired_goal.shape
+        
+        d = np.linalg.norm(achieved_goal - desired_goal, axis=-1)
+
+        return (d < self.distance_threshold).astype(np.float32)
+        
 
     def _get_action_space(self):
         """
@@ -389,10 +388,8 @@ class UR5RobotiqEnv(gym.Env):
         new_state = rs_state.server_state_to_env_state(robotiq=self.robotiq)
 
         # Check if the environment state is contained in the observation space
-        if not self.observation_space.contains(new_state.to_array() ):
-            print(new_state.to_array())
-            print(self.observation_space.high)
-            print(self.observation_space.low)      
+        if not self.observation_space.contains(new_state.get_obs() ):
+            print(new_state.to_array())    
             raise InvalidStateError()
 
         return new_state, rs_state
@@ -430,10 +427,8 @@ class UR5RobotiqEnv(gym.Env):
         self.observation_space=self._get_observation_space_with_cubes(new_state.number_of_cubes)
 
         # Check if the environment state is contained in the observation space
-        if not self.observation_space.contains(new_state.to_array() ):
-            print(new_state.to_array())
-            print(self.observation_space.high)
-            print(self.observation_space.low)            
+        if not self.observation_space.contains(new_state.get_obs() ):
+            print(new_state.to_array())      
             raise InvalidStateError()
 
         return new_state, rs_state
@@ -447,6 +442,7 @@ class env_state():
         * gripper_pose (np.array) -> gripper's pose in xyzrpy
         * cubes_pose (np.array) -> cubes' pose in xyzrpy
         * cubes_destination_pose (np.array) -> cubes' destination pose in xyzrpy
+        * collision-> is the robot is collision?
 
     """
     
@@ -464,7 +460,8 @@ class env_state():
             "ur_j_vel": ur_utils.UR5ROBOTIQ().ur_joint_dict(),
             "gripper_pose": np.zeros(6, dtype=np.float32),
             "cubes_pose": [],
-            "cubes_destination_pose": []
+            "cubes_destination_pose": [],
+            "collision":[]
         }
     
     def update_ur_j_pos(self, ur_joint_state):
@@ -532,12 +529,26 @@ class env_state():
 
         self.state["cubes_destination_pose"]=np.array(new_cubes_destination)
 
+    def update_collision (self, new_collision_state):
+        """
+        Updates the cllision state:
+        
+        Args:
+            new_collision_state (array like): is the robot in collision state?
+
+        Returns:
+            none
+        """
+
+        self.state["collision"]=np.array(new_collision_state)
+
     def _get_target_to_gripper(self):
         """
         Returns the object position in relation to gripper
         """
 
-        return self.state["cubes_pose"][0, 0:3] - self.state["gripper_pose"][0:3]
+        #return self.state["cubes_pose"][0, 0:3] - self.state["gripper_pose"][0:3]
+        return self.state["cubes_pose"][0:3] - self.state["gripper_pose"][0:3]
 
     def to_array(self):
         """
@@ -553,10 +564,21 @@ class env_state():
         """
         gripper_to_obj_pose = self._get_target_to_gripper()
 
-        #env_array= self.state["ur_j_pos"].get_values_std_order().tolist() + self.state["ur_j_vel"].get_values_std_order().tolist() + self.state["gripper_pose"].tolist() + gripper_to_obj_pose.tolist() + self.state["cubes_pose"].reshape(-1)[1:].tolist() + self.state["cubes_destination_pose"].tolist()
-        env_array= self.state["ur_j_pos"].get_values_std_order().tolist() + self.state["ur_j_vel"].get_values_std_order().tolist() + self.state["gripper_pose"].tolist() + gripper_to_obj_pose.tolist() + self.state["cubes_pose"][:, 1:].reshape(-1).tolist() + self.state["cubes_destination_pose"].tolist()
+        #env_array= self.state["ur_j_pos"].get_values_std_order().tolist() + self.state["ur_j_vel"].get_values_std_order().tolist() + self.state["gripper_pose"].tolist() + gripper_to_obj_pose.tolist() + self.state["cubes_pose"][:, 1:].reshape(-1).tolist() + self.state["cubes_destination_pose"].tolist()
+        env_array= self.state["ur_j_pos"].get_values_std_order().tolist() + self.state["ur_j_vel"].get_values_std_order().tolist() + self.state["gripper_pose"].tolist() + gripper_to_obj_pose.tolist() + self.state["cubes_pose"][1:].reshape(-1).tolist() + self.state["cubes_destination_pose"].tolist()
 
         return env_array
+
+    def get_obs(self):
+        gripper_to_obj_pose = self._get_target_to_gripper()
+
+        obs=dict(
+            desired_goal = np.array(self.state["cubes_destination_pose"].tolist() ),
+            #achieved_goal= np.array(self.state["cubes_pose"][:, 1:].reshape(-1).tolist() ),
+            achieved_goal= np.array(self.state["cubes_pose"][1:].reshape(-1).tolist() ),
+            observation  = np.array(self.state["ur_j_pos"].get_values_std_order().tolist() + self.state["ur_j_vel"].get_values_std_order().tolist() + self.state["gripper_pose"].tolist() + gripper_to_obj_pose.tolist() ),
+        )
+        return obs
 
 class action_state():
     """
@@ -912,8 +934,11 @@ class server_state():
         new_env_state.update_ur_j_pos(ur_j_pos_norm)
         new_env_state.update_ur_j_vel(self.state["ur_j_vel"])
         new_env_state.update_gripper_pose(self.state["gripper_pose"])
-        new_env_state.update_cubes_pose(self.state["cubes_pose"], self.number_of_cubes)
+        #new_env_state.update_cubes_pose(self.state["cubes_pose"], self.number_of_cubes)
+        #consider only 1 cube
+        new_env_state.update_cubes_pose(self.state["cubes_pose"][0, :], 1)
         new_env_state.update_cube_destination(self.state["cubes_destination_pose"])
+        new_env_state.update_collision(self.state["collision"])
         
         return new_env_state
 
@@ -922,6 +947,56 @@ class GraspObjectUR5(UR5RobotiqEnv):
         assert goal_a.shape == goal_b.shape
 
         return np.linalg.norm(goal_a - goal_b, axis=-1)
+
+    def compute_reward(self, achieved_goal, desired_goal, info):
+        reward = 0
+        done = False
+        info = {}
+
+        # Calculate distance to the target
+        #desired goal
+        cubes_destination_pose = np.array(desired_goal )[0:3]
+        #achieved goal
+        cube_real_pose         = np.array(achieved_goal)[0:3]  #for now, requests the only cube's pose
+        #euclidean norm
+        euclidean_dist_3d      = self._distance_to_goal(cubes_destination_pose, cube_real_pose)
+
+        # Reward base
+        reward = -1 * euclidean_dist_3d
+        
+        
+        #IMPORTANT NOT TO RESTRICT JOINTS THIS MUCH
+        # #Evaluate joint space        
+        #joint_positions_normalized=ur_utils.UR5ROBOTIQ(self.robotiq).normalize_ur_joint_dict(joint_dict=rs_state.state["ur_j_pos"])
+        #action_values_std_order=action["arm_joints"].tolist() + [ action["finger_joints"] ]
+        #delta = np.abs(np.subtract(joint_positions_normalized.get_values_std_order(), action_values_std_order ))
+        #reward = reward - (0.05 * np.sum(delta))
+
+        if euclidean_dist_3d.all() <= self.distance_threshold:
+            reward = 100
+            done = True
+            info['final_status'] = 'success'
+            info['cubes_destination_pose'] = cubes_destination_pose
+
+        # Check if robot is in collision
+        if self.state.state["collision"] [-1] == 1:
+            collision = True
+        else:
+            collision = False
+
+        if collision:
+            reward = -400
+            done = True
+            info['final_status'] = 'collision'
+            info['cubes_destination_pose'] = cubes_destination_pose
+
+        if self.elapsed_steps >= self.max_episode_steps:
+            done = True
+            info['final_status'] = 'max_steps_exceeded'
+            info['cubes_destination_pose'] = cubes_destination_pose
+
+        return reward #, done, info
+
 
     def _reward(self, rs_state, action):
         reward = 0
