@@ -134,7 +134,7 @@ class UR5RobotiqEnv(gym.GoalEnv):
         #############################
 
         #Get current state, update obs space with cubes and validate
-        self.state, rs_state =self._get_current_env_state_and_update_observation_space()
+        self.state, rs_state =self._get_current_state()
 
         # check if current position is in the range of the initial joint positions
         if (len(self.last_position_on_success) == 0) or (type=='random'):
@@ -154,15 +154,12 @@ class UR5RobotiqEnv(gym.GoalEnv):
         action = action_state().get_action_from_env_state(self.state) 
         _, _, done, info = self.step( action.action_as_box() ) 
         self.elapsed_steps = 0
+
         if done and info['final_status'] == 'collision':
             raise InvalidStateError('Reset started in a collision state')
             
-        #return self.state.to_array()
         return self.state.get_obs()
-
-    def _reward(self, rs_state, action):
-        return 0, False, {}
-
+    
     def step(self, action):
         self.elapsed_steps += 1
 
@@ -170,10 +167,39 @@ class UR5RobotiqEnv(gym.GoalEnv):
         # Check if the action is within the action space
         assert self.action_space.contains(action ), "%r (%s) invalid" % (action, type(action))
 
+        #create action object and send to robot server
+        rs_action = self._get_action_object_and_send(action)
+
+        #Get current state and validade
+        self.state, rs_state = self._get_current_state()
+        
+        # obs, reward, done, info
+        obs = self.state.get_obs()
+
+        achieved_goal = np.array(obs['achieved_goal'], ndmin=2)
+        desired_goal  = np.array(obs['desired_goal'], ndmin=2)
+
+        info, done = self._update_info_and_done(achieved_goal=achieved_goal, desired_goal=desired_goal)
+
+        reward = self.compute_reward(achieved_goal=achieved_goal, desired_goal=desired_goal, info=info)            
+
+        return obs, reward, done, info
+
+    def render():
+        pass
+    
+    def _reward(self, rs_state, action):
+        return 0, False, {}
+
+    def _get_action_object_and_send(self, action):
+        """
+        Creates action object and sends it to robot server
+        """
+
         # Convert environment action to Robot Server action
-        rs_action = action_state() #copy.deepcopy(action)
+        rs_action = action_state()
+
         # Scale action
-        #action_values_std_order=action["arm_joints"].tolist() + [ action["finger_joints"] ]
         rs_action.update_action(np.multiply(action, self.abs_joint_pos_range.get_values_std_order() ) )
         # Convert action indexing from ur5 to ros
         rs_action = rs_action.joints["ur_j_pos"].get_values_ros_order()
@@ -182,24 +208,9 @@ class UR5RobotiqEnv(gym.GoalEnv):
         if not self.client.send_action(rs_action.tolist()):
             raise RobotServerError("send_action")
 
-        #Get current state and validade
-        self.state, rs_state =self._get_current_env_state()
+        return rs_action
 
-        # Assign reward
-        obs = self.state.get_obs()
-        reward = 0
-        done = False
-        info = {
-            'is_success': self._is_success(obs['achieved_goal'], obs['desired_goal']),
-        }
-        #reward, done, info = self._reward(rs_state=rs_state, action=action)
-        reward = self.compute_reward(np.array(rs_state.state["cubes_pose"][ 0, : ])[0:3], np.array(rs_state.state["cubes_destination_pose"])[0:3], info=info)
-
-        #return self.state.to_array(), reward, done, info
-        return obs, reward, done, info
-
-    def render():
-        pass
+    #initialization routines
 
     def _set_initial_joint_positions_range(self):
         '''
@@ -208,8 +219,10 @@ class UR5RobotiqEnv(gym.GoalEnv):
 
         IMPORTANT: gripper should start fully open (max=min=0)
         '''
-        self.initial_joint_positions_low = np.array([-0.65, -2.75, 1.0, -3.14, -1.7, -3.14, 0.0])
-        self.initial_joint_positions_high = np.array([0.65, -2.0, 2.5, 3.14, -1.0, 3.14, 0.85])
+        #self.initial_joint_positions_low = np.array([-0.65, -2.75, 1.0, -3.14, -1.7, -3.14, 0.0])
+        #self.initial_joint_positions_high = np.array([0.65, -2.0, 2.5, 3.14, -1.0, 3.14, 0.85])
+        self.initial_joint_positions_low  = np.array(self.ur5.get_min_joint_positions().get_values_std_order())
+        self.initial_joint_positions_high = np.array(self.ur5.get_max_joint_positions().get_values_std_order())
 
     def _get_initial_joint_positions(self):
         """Generate random initial robot joint positions.
@@ -242,7 +255,7 @@ class UR5RobotiqEnv(gym.GoalEnv):
 
         singularity_area = True
 
-        # check if generated x,y,z are in singularityarea
+        # check if generated x,y,z are in singularity area
         while singularity_area:
             # Generate random uniform sample in semisphere taking advantage of the
             # sampling rule
@@ -272,6 +285,44 @@ class UR5RobotiqEnv(gym.GoalEnv):
 
         self.rs_state__destination_len = len(pose)
         return pose
+    
+    #reward/done/info
+    def _update_info_and_done(self, desired_goal, achieved_goal):
+        info = {
+            'is_success': self._is_success(np.array(achieved_goal)[:, 0:3], np.array(desired_goal )[:, 0:3]),
+            'final_status': None,
+            'cubes_destination_pose': self.cube_destination_pose,
+        }
+        done=False
+
+        euclidean_dist_3d      = self._distance_to_goal(np.array(desired_goal )[:, 0:3], np.array(achieved_goal)[:, 0:3])
+
+        if euclidean_dist_3d.all() <= self.distance_threshold:
+            done = True
+            info['final_status']='success'
+        if self.state.state["collision"] [-1] == 1:
+            done = True
+            info['final_status'] = 'collision'
+        if self.elapsed_steps >= self.max_episode_steps:
+            done = True
+            info['final_status'] = 'max_steps_exceeded'
+        
+        return info, done
+
+    def _is_success(self, achieved_goal, desired_goal):
+        if isinstance(achieved_goal, list):
+            achieved_goal = np.array(achieved_goal, dtype='float32')
+
+        if isinstance(desired_goal, list):
+            desired_goal = np.array(desired_goal, dtype='float32')
+        
+        assert achieved_goal.shape == desired_goal.shape
+        
+        d = np.linalg.norm(achieved_goal - desired_goal, axis=-1)
+
+        return (d < self.distance_threshold).astype(np.float32)
+
+    #Observation and action spaces
 
     def _get_observation_space_with_cubes(self, number_of_cubes):
         """Get environment observation space, considering the cubes positioning
@@ -319,11 +370,6 @@ class UR5RobotiqEnv(gym.GoalEnv):
         min_cube_destination_pos=[-abs_max_gripper_pose, -abs_max_gripper_pose,      0, -abs_max_angle, -abs_max_angle, -abs_max_angle]
 
         # Definition of environment observation_space
-        #max_obs = np.concatenate(( max_joint_positions, max_joint_velocities, max_gripper_pose, max_gripper_to_obj_pose, max_n_cube_pos, max_cube_destination_pos))
-        #min_obs = np.concatenate(( min_joint_positions, min_joint_velocities, min_gripper_pose, min_gripper_to_obj_pose, min_n_cube_pos, min_cube_destination_pos))
-        #
-        # return spaces.Box(low=min_obs, high=max_obs, dtype=np.float32)
-
         max_observation = np.concatenate(( max_joint_positions, max_joint_velocities, max_gripper_pose, max_gripper_to_obj_pose))
         min_observation = np.concatenate(( min_joint_positions, min_joint_velocities, min_gripper_pose, min_gripper_to_obj_pose))
 
@@ -339,15 +385,7 @@ class UR5RobotiqEnv(gym.GoalEnv):
             observation  =spaces.Box(low=min_observation,   high=max_observation,   dtype='float32'),
         ))
         return self.observation_space
-
-    def _is_success(self, achieved_goal, desired_goal):
-        assert achieved_goal.shape == desired_goal.shape
-        
-        d = np.linalg.norm(achieved_goal - desired_goal, axis=-1)
-
-        return (d < self.distance_threshold).astype(np.float32)
-        
-
+    
     def _get_action_space(self):
         """
         self.action_space = spaces.Dict({
@@ -359,7 +397,9 @@ class UR5RobotiqEnv(gym.GoalEnv):
         
         return self.action_space
 
-    def _get_current_env_state(self):
+    #get state
+
+    def _get_current_state(self):
         """Requests the current robot state (simulated or real)
 
         Args:
@@ -390,45 +430,6 @@ class UR5RobotiqEnv(gym.GoalEnv):
         # Check if the environment state is contained in the observation space
         if not self.observation_space.contains(new_state.get_obs() ):
             print(new_state.to_array())    
-            raise InvalidStateError()
-
-        return new_state, rs_state
-
-    def _get_current_env_state_and_update_observation_space(self):
-        """Requests the current robot state (simulated or real), updates obs space according to the number of cubes
-
-        Args:
-            NaN
-
-        Returns:
-            new_state (env_state): Current state in environment format.
-            rs_state (server_state): State in Robot Server format.
-
-        """
-
-        # Get Robot Server state
-        rs_state=server_state()
-        rs_state.set_server_from_message(np.nan_to_num(np.array(self.client.get_state_msg().state)))
-        #force destination pose to be over the second cube (index 1), excluding #id
-        self.cube_destination_pose=copy.deepcopy(rs_state.state["cubes_pose"][1, 1:])
-        self.cube_destination_pose[2]=self.cube_destination_pose[2]*3 #to be placed on top of the other (3x the center of mass)
-
-        rs_state.update_cube_destination(self.cube_destination_pose)
-
-        # Check if the length of the Robot Server state received is correct
-        #if not len(rs_state)== self._get_robot_server_state_len():
-        #    raise InvalidStateError("Robot Server state received has wrong length")
-
-        # Convert the initial state from Robot Server format to environment format
-        new_state = rs_state.server_state_to_env_state(robotiq=self.robotiq)
-
-
-        #updates observation space according to the number of cubes
-        self.observation_space=self._get_observation_space_with_cubes(new_state.number_of_cubes)
-
-        # Check if the environment state is contained in the observation space
-        if not self.observation_space.contains(new_state.get_obs() ):
-            print(new_state.to_array())      
             raise InvalidStateError()
 
         return new_state, rs_state
@@ -573,10 +574,10 @@ class env_state():
         gripper_to_obj_pose = self._get_target_to_gripper()
 
         obs=dict(
-            desired_goal = np.array(self.state["cubes_destination_pose"].tolist() ),
+            desired_goal = self.state["cubes_destination_pose"].tolist() ,
             #achieved_goal= np.array(self.state["cubes_pose"][:, 1:].reshape(-1).tolist() ),
-            achieved_goal= np.array(self.state["cubes_pose"][1:].reshape(-1).tolist() ),
-            observation  = np.array(self.state["ur_j_pos"].get_values_std_order().tolist() + self.state["ur_j_vel"].get_values_std_order().tolist() + self.state["gripper_pose"].tolist() + gripper_to_obj_pose.tolist() ),
+            achieved_goal= self.state["cubes_pose"][1:].reshape(-1).tolist() ,
+            observation  = np.concatenate([self.state["ur_j_pos"].get_values_std_order(), self.state["ur_j_vel"].get_values_std_order(), self.state["gripper_pose"], gripper_to_obj_pose])
         )
         return obs
 
@@ -951,147 +952,29 @@ class GraspObjectUR5(UR5RobotiqEnv):
     def compute_reward(self, achieved_goal, desired_goal, info):
         reward = 0
         done = False
-        info = {}
 
         # Calculate distance to the target
         #desired goal
-        cubes_destination_pose = np.array(desired_goal )[0:3]
+        cubes_destination_pose = np.array(desired_goal )[:, 0:3]
         #achieved goal
-        cube_real_pose         = np.array(achieved_goal)[0:3]  #for now, requests the only cube's pose
+        cube_real_pose         = np.array(achieved_goal)[:, 0:3]  #for now, requests the only cube's pose
         #euclidean norm
         euclidean_dist_3d      = self._distance_to_goal(cubes_destination_pose, cube_real_pose)
 
         # Reward base
         reward = -1 * euclidean_dist_3d
-        
-        
-        #IMPORTANT NOT TO RESTRICT JOINTS THIS MUCH
-        # #Evaluate joint space        
-        #joint_positions_normalized=ur_utils.UR5ROBOTIQ(self.robotiq).normalize_ur_joint_dict(joint_dict=rs_state.state["ur_j_pos"])
-        #action_values_std_order=action["arm_joints"].tolist() + [ action["finger_joints"] ]
-        #delta = np.abs(np.subtract(joint_positions_normalized.get_values_std_order(), action_values_std_order ))
-        #reward = reward - (0.05 * np.sum(delta))
 
         if euclidean_dist_3d.all() <= self.distance_threshold:
-            reward = 100
-            done = True
-            info['final_status'] = 'success'
-            info['cubes_destination_pose'] = cubes_destination_pose
+            reward = [ 100.0]
 
         # Check if robot is in collision
         if self.state.state["collision"] [-1] == 1:
-            collision = True
-        else:
-            collision = False
-
-        if collision:
-            reward = -400
-            done = True
-            info['final_status'] = 'collision'
-            info['cubes_destination_pose'] = cubes_destination_pose
+            reward = [-400.0]
 
         if self.elapsed_steps >= self.max_episode_steps:
-            done = True
-            info['final_status'] = 'max_steps_exceeded'
-            info['cubes_destination_pose'] = cubes_destination_pose
+            self.done = True
 
-        return reward #, done, info
-
-
-    def _reward(self, rs_state, action):
-        reward = 0
-        done = False
-        info = {}
-
-        # Calculate distance to the target
-        #desired goal
-        cubes_destination_pose = np.array(rs_state.state["cubes_destination_pose"])[0:3]
-        #achieved goal
-        cube_real_pose         = np.array(rs_state.state["cubes_pose"][ 0, : ])[0:3]  #for now, requests the only cube's pose
-        #euclidean norm
-        euclidean_dist_3d      = self._distance_to_goal(cubes_destination_pose, cube_real_pose)
-
-        # Reward base
-        reward = -1 * euclidean_dist_3d
-        
-        
-        #IMPORTANT NOT TO RESTRICT JOINTS THIS MUCH
-        # #Evaluate joint space        
-        #joint_positions_normalized=ur_utils.UR5ROBOTIQ(self.robotiq).normalize_ur_joint_dict(joint_dict=rs_state.state["ur_j_pos"])
-        #action_values_std_order=action["arm_joints"].tolist() + [ action["finger_joints"] ]
-        #delta = np.abs(np.subtract(joint_positions_normalized.get_values_std_order(), action_values_std_order ))
-        #reward = reward - (0.05 * np.sum(delta))
-
-        if euclidean_dist_3d <= self.distance_threshold:
-            reward = 100
-            done = True
-            info['final_status'] = 'success'
-            info['cubes_destination_pose'] = cubes_destination_pose
-
-        # Check if robot is in collision
-        if rs_state.state["collision"] [-1] == 1:
-            collision = True
-        else:
-            collision = False
-
-        if collision:
-            reward = -400
-            done = True
-            info['final_status'] = 'collision'
-            info['cubes_destination_pose'] = cubes_destination_pose
-
-        if self.elapsed_steps >= self.max_episode_steps:
-            done = True
-            info['final_status'] = 'max_steps_exceeded'
-            info['cubes_destination_pose'] = cubes_destination_pose
-
-        return reward, done, info
-
-
-    """        
-    def _reward(self, rs_state, action):
-        reward = 0
-        done = False
-        info = {}
-
-        # Calculate distance to the target
-        target_coord = np.array(rs_state.state["target_xyzrpy"])[0:3]
-        ee_coord =   np.array(rs_state.state["ee_base_transform"])[0:3]
-        euclidean_dist_3d = np.linalg.norm(target_coord - ee_coord)
-
-        # Reward base
-        reward = -1 * euclidean_dist_3d
-        
-        joint_positions_normalized=ur_utils.UR5ROBOTIQ(self.robotiq).normalize_ur_joint_dict(joint_dict=rs_state.state["ur_j_pos"])
-
-        delta = np.abs(np.subtract(joint_positions_normalized.get_values_std_order(), action.joints["ur_j_pos"].get_values_std_order() ))
-        reward = reward - (0.05 * np.sum(delta))
-
-        if euclidean_dist_3d <= self.distance_threshold:
-            reward = 100
-            done = True
-            info['final_status'] = 'success'
-            info['target_coord'] = target_coord
-
-        # Check if robot is in collision
-        if rs_state.state["collision"] [-1] == 1:
-            collision = True
-        else:
-            collision = False
-
-        if collision:
-            reward = -400
-            done = True
-            info['final_status'] = 'collision'
-            info['target_coord'] = target_coord
-
-        if self.elapsed_steps >= self.max_episode_steps:
-            done = True
-            info['final_status'] = 'max_steps_exceeded'
-            info['target_coord'] = target_coord
-
-        return reward, done, info
-    """
+        return reward[0]
 
 class GraspObjectUR5Sim(GraspObjectUR5, Simulation):
     #cmd = "roslaunch ur_robot_server ur5Robotiq_sim_robot_server.launch \
