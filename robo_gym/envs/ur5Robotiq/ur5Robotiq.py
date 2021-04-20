@@ -44,7 +44,9 @@ class UR5RobotiqEnv(gym.GoalEnv):
         self.number_of_finger_joints = self.ur_joint_dict().get_number_of_finger_joints()
         #tol, max, min
         self.distance_threshold = 0.1
-        self.abs_joint_pos_range = self.ur5.get_max_joint_positions()
+        #self.abs_joint_pos_range = self.ur5.get_max_joint_positions()
+        self.min_joint_pos = np.array(self.ur5.get_min_joint_positions().get_values_std_order())
+        self.max_joint_pos = np.array(self.ur5.get_max_joint_positions().get_values_std_order())
         self.initial_joint_positions_low = self.ur_joint_dict()
         self.initial_joint_positions_high = self.ur_joint_dict()
 
@@ -147,15 +149,17 @@ class UR5RobotiqEnv(gym.GoalEnv):
                     print(joint_positions[joint])
                     print(self.initial_joint_positions_low[joint])
                     print(self.initial_joint_positions_high[joint])
+                    print(ur5_initial_joint_positions)
                     raise InvalidStateError('Reset joint positions are not within defined range')
 
 
         # go one empty action and check if there is a collision
         action = action_state().get_action_from_env_state(self.state) 
-        _, _, done, info = self.step( action.action_as_box() ) 
+        obs, reward, done, info = self.step( action.action_as_box() ) 
         self.elapsed_steps = 0
 
         if done and info['final_status'] == 'collision':
+            print(obs)
             raise InvalidStateError('Reset started in a collision state')
             
         return self.state.get_obs()
@@ -200,7 +204,13 @@ class UR5RobotiqEnv(gym.GoalEnv):
         rs_action = action_state()
 
         # Scale action
-        rs_action.update_action(np.multiply(action, self.abs_joint_pos_range.get_values_std_order() ) )
+        #rs_action.update_action(np.multiply(action, self.abs_joint_pos_range.get_values_std_order() ) )
+        abs_joint_values=np.zeros(len(action), dtype='float32')
+        for i in range(len(action)):
+            #converts action joint values from [-1, 1] to the available range
+            abs_joint_values[i] = (self.max_joint_pos [i] *(1 + action[i])+ self.min_joint_pos [i] * (1-action[i]))/2
+        rs_action.update_action(abs_joint_values)
+
         # Convert action indexing from ur5 to ros
         rs_action = rs_action.joints["ur_j_pos"].get_values_ros_order()
 
@@ -234,7 +244,7 @@ class UR5RobotiqEnv(gym.GoalEnv):
         self._set_initial_joint_positions_range()
         # Random initial joint positions
         joint_positions = np.random.default_rng().uniform(low=self.initial_joint_positions_low, high=self.initial_joint_positions_high)
-
+        #joint_positions = np.array([-9.36364591e-01, -6.76085472e-01,  9.92242396e-01, -3.15184891e-02, -9.91933823e-01, -9.96397674e-01,  1.00009084e+00], dtype='float32')
         return joint_positions
 
     def _get_target_pose(self):
@@ -300,9 +310,9 @@ class UR5RobotiqEnv(gym.GoalEnv):
         if euclidean_dist_3d.all() <= self.distance_threshold:
             done = True
             info['final_status']='success'
-        if self.state.state["collision"] [-1] == 1:
-            done = True
-            info['final_status'] = 'collision'
+        #if self.state.state["collision"] [-1] == 1:
+        #    done = True
+        #    info['final_status'] = 'collision'
         if self.elapsed_steps >= self.max_episode_steps:
             done = True
             info['final_status'] = 'max_steps_exceeded'
@@ -335,7 +345,7 @@ class UR5RobotiqEnv(gym.GoalEnv):
 
         # Joint position range tolerance
         pos_tolerance = np.full(self.ur5.number_of_joint_positions,self.distance_threshold)
-        # Joint positions range used to determine if there is an error in the sensor readings
+        # Joint positions range used to determine if there is an error in the sensor readings (normalized joints between -1, 1)
         max_joint_positions = np.add(np.full(self.number_of_joints, 1.0), pos_tolerance)
         min_joint_positions = np.subtract(np.full(self.number_of_joints, -1.0), pos_tolerance)
         
@@ -429,7 +439,9 @@ class UR5RobotiqEnv(gym.GoalEnv):
 
         # Check if the environment state is contained in the observation space
         if not self.observation_space.contains(new_state.get_obs() ):
-            print(new_state.to_array())    
+            print(new_state.to_array())
+            print(self.observation_space.spaces.low)
+            print(self.observation_space.spaces.high)
             raise InvalidStateError()
 
         return new_state, rs_state
@@ -968,11 +980,8 @@ class GraspObjectUR5(UR5RobotiqEnv):
             reward = [ 100.0]
 
         # Check if robot is in collision
-        if self.state.state["collision"] [-1] == 1:
-            reward = [-400.0]
-
-        if self.elapsed_steps >= self.max_episode_steps:
-            self.done = True
+        #if self.state.state["collision"] [-1] == 1:
+        #    reward = [-400.0]
 
         return reward[0]
 
@@ -986,8 +995,8 @@ class GraspObjectUR5Sim(GraspObjectUR5, Simulation):
         max_velocity_scale_factor:=0.2 \
         action_cycle_rate:=20 \
         world_name:=cubes.world \
-        rviz_gui:=false" #\
-        #gazebo_gui:=false"
+        rviz_gui:=false \
+        gazebo_gui:=true"
     def __init__(self, ip=None, lower_bound_port=None, upper_bound_port=None, gui=False, **kwargs):
         Simulation.__init__(self, self.cmd, ip, lower_bound_port, upper_bound_port, gui, **kwargs)
         GraspObjectUR5.__init__(self, rs_address=self.robot_server_ip, robotiq=85, **kwargs)
