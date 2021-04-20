@@ -276,12 +276,15 @@ class UR5ROBOTIQ():
         # joint positions, standard order
         # Indexes go from shoulder pan joint to end effector
         if (robotiq==85): #if robotiq 85, finger joint lims are 0 and 0.8
-            max_joint_pos=   np.array([6.28,6.28,6.28,6.28,6.28,6.28, 0.8])
-            min_joint_pos= - np.array([6.28,6.28,6.28,6.28,6.28,6.28, 0])
-            
+            #max_joint_pos=   np.array([6.28,6.28,6.28,6.28,6.28,6.28, 0.8])
+            #min_joint_pos= - np.array([6.28,6.28,6.28,6.28,6.28,6.28, 0])
+            max_joint_pos=  np.array([ 2*np.pi, -2*np.pi/5,  2.7,      0,  np.pi,  np.pi, 0.8])
+            min_joint_pos=  np.array([-2*np.pi, -3*np.pi/5, -2.7, -np.pi, -np.pi, -np.pi, 0])
         elif (robotiq==140): #if robotiq 140, finger joint lims are 0 and 0.7
-            max_joint_pos =   np.array([6.28,6.28,6.28,6.28,6.28,6.28, 0.7])
-            min_joint_pos = - np.array([6.28,6.28,6.28,6.28,6.28,6.28, 0])
+            #max_joint_pos =   np.array([6.28,6.28,6.28,6.28,6.28,6.28, 0.7])
+            #min_joint_pos = - np.array([6.28,6.28,6.28,6.28,6.28,6.28, 0])
+            max_joint_pos=  np.array([ 2*np.pi, -2*np.pi/5,  2.7,      0,  np.pi,  np.pi, 0.7])
+            min_joint_pos=  np.array([-2*np.pi, -3*np.pi/5, -2.7, -np.pi, -np.pi, -np.pi, 0])
 
         else:
             raise InvalidStateError('Invalid gripper')
