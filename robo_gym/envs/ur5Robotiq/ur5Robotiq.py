@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
 
+import time
 from copy import deepcopy
 import sys, math, copy, random
 import numpy as np
@@ -127,7 +128,6 @@ class UR5RobotiqEnv(gym.GoalEnv):
 
         # Set initial state of the Robot Server
         state_msg = robot_server_pb2.State(state = rs_state.get_server_message() )
-
         if not self.client.set_state_msg(state_msg):
             raise RobotServerError("set_state")
         
@@ -147,38 +147,35 @@ class UR5RobotiqEnv(gym.GoalEnv):
                 if (joint_positions[joint]+tolerance < self.initial_joint_positions_low[joint]) or  (joint_positions[joint]-tolerance  > self.initial_joint_positions_high[joint]):
                     print(joint)
                     print(joint_positions[joint])
-                    print(self.initial_joint_positions_low[joint])
-                    print(self.initial_joint_positions_high[joint])
-                    print(ur5_initial_joint_positions)
                     raise InvalidStateError('Reset joint positions are not within defined range')
 
 
         # go one empty action and check if there is a collision
-        action = action_state().get_action_from_env_state(self.state) 
-        obs, reward, done, info = self.step( action.action_as_box() ) 
+        action = self.state.state["ur_j_pos_norm"].get_values_std_order()
+        obs, reward, done, info = self.step( action ) 
         self.elapsed_steps = 0
 
         if done and info['final_status'] == 'collision':
             print(obs)
             raise InvalidStateError('Reset started in a collision state')
             
-        return self.state.get_obs()
-    
+        return obs
+
     def step(self, action):
         self.elapsed_steps += 1
-
+        
         action = np.clip(action, self.action_space.low, self.action_space.high)
         # Check if the action is within the action space
         assert self.action_space.contains(action ), "%r (%s) invalid" % (action, type(action))
 
         #create action object and send to robot server
-        rs_action = self._get_action_object_and_send(action)
+        action_absolute = self._send_action(action)
 
-        #Get current state and validade
-        self.state, rs_state = self._get_current_state()
-        
         # obs, reward, done, info
         obs = self.state.get_obs()
+        #if not self.observation_space.contains(obs):
+        #    print(obs)
+        #    raise InvalidStateError()
 
         achieved_goal = np.array(obs['achieved_goal'], ndmin=2)
         desired_goal  = np.array(obs['desired_goal'], ndmin=2)
@@ -195,30 +192,31 @@ class UR5RobotiqEnv(gym.GoalEnv):
     def _reward(self, rs_state, action):
         return 0, False, {}
 
-    def _get_action_object_and_send(self, action):
+    def _send_action(self, action):
         """
-        Creates action object and sends it to robot server
+        sends action to robot server
+        action received is normalized and in std order
         """
-
-        # Convert environment action to Robot Server action
-        rs_action = action_state()
-
+        
         # Scale action
-        #rs_action.update_action(np.multiply(action, self.abs_joint_pos_range.get_values_std_order() ) )
         abs_joint_values=np.zeros(len(action), dtype='float32')
-        for i in range(len(action)):
-            #converts action joint values from [-1, 1] to the available range
-            abs_joint_values[i] = (self.max_joint_pos [i] *(1 + action[i])+ self.min_joint_pos [i] * (1-action[i]))/2
-        rs_action.update_action(abs_joint_values)
+        abs_joint_values = (self.max_joint_pos *(1 + action)+ self.min_joint_pos * (1-action))/2
+        
+        #create object to deal with joint order
+        new_action_dict=self.ur_joint_dict().set_values_std_order(values=abs_joint_values)
 
-        # Convert action indexing from ur5 to ros
-        rs_action = rs_action.joints["ur_j_pos"].get_values_ros_order()
-
-        # Send action to Robot Server
-        if not self.client.send_action(rs_action.tolist()):
-            raise RobotServerError("send_action")
-
-        return rs_action
+        #compute the difference between real joint pos and desired pos (from action)
+        abs_difference = np.absolute(abs_joint_values - self.state.state["ur_j_pos"].get_values_std_order())[:-1]
+        
+        #resends untill completion
+        while not ((abs_difference<self.distance_threshold).all()):
+            # Send action to Robot Server
+            if not self.client.send_action(new_action_dict.get_values_ros_order().tolist()):
+                raise RobotServerError("send_action")       
+            self.state, _ = self._get_current_state()
+            abs_difference=np.absolute(abs_joint_values - self.state.state["ur_j_pos"].get_values_std_order())[:-1]
+        
+        return abs_joint_values
 
     #initialization routines
 
@@ -408,7 +406,7 @@ class UR5RobotiqEnv(gym.GoalEnv):
         return self.action_space
 
     #get state
-
+    
     def _get_current_state(self):
         """Requests the current robot state (simulated or real)
 
@@ -420,7 +418,6 @@ class UR5RobotiqEnv(gym.GoalEnv):
             rs_state (server_state): State in Robot Server format.
 
         """
-
         # Get Robot Server state
         rs_state=server_state()
         rs_state.set_server_from_message(np.nan_to_num(np.array(self.client.get_state_msg().state)))
@@ -437,12 +434,6 @@ class UR5RobotiqEnv(gym.GoalEnv):
         # Convert the initial state from Robot Server format to environment format
         new_state = rs_state.server_state_to_env_state(robotiq=self.robotiq)
 
-        # Check if the environment state is contained in the observation space
-        if not self.observation_space.contains(new_state.get_obs() ):
-            print(new_state.to_array())
-            print(self.observation_space.spaces.low)
-            print(self.observation_space.spaces.high)
-            raise InvalidStateError()
 
         return new_state, rs_state
 
@@ -463,6 +454,7 @@ class env_state():
         """
         Populates the structure with:
             * ur_j_pos     (ur_joint_dict) : joint positions in angles (with zeros)
+            * ur_j_pos_norm     (ur_joint_dict) : same as previous, but the joints are normalized between -1, 1
             * ur_j_vel     (ur_joint_dict) : joint velocities (with zeros)
             * gripper_pose (np.array) -> gripper's pose in xyzrpy
             * cubes_pose (np.array) -> cubes' pose in xyzrpy
@@ -470,6 +462,7 @@ class env_state():
         """
         self.state={
             "ur_j_pos": ur_utils.UR5ROBOTIQ().ur_joint_dict(),
+            "ur_j_pos_norm": ur_utils.UR5ROBOTIQ().ur_joint_dict(),
             "ur_j_vel": ur_utils.UR5ROBOTIQ().ur_joint_dict(),
             "gripper_pose": np.zeros(6, dtype=np.float32),
             "cubes_pose": [],
@@ -489,6 +482,7 @@ class env_state():
         """
         
         self.state["ur_j_pos"]=copy.deepcopy(ur_joint_state)
+        self.state["ur_j_pos_norm"]=ur_utils.UR5ROBOTIQ().normalize_ur_joint_dict(joint_dict=ur_joint_state)
 
     def update_ur_j_vel(self, ur_joint_state):
         """
@@ -589,7 +583,7 @@ class env_state():
             desired_goal = self.state["cubes_destination_pose"].tolist() ,
             #achieved_goal= np.array(self.state["cubes_pose"][:, 1:].reshape(-1).tolist() ),
             achieved_goal= self.state["cubes_pose"][1:].reshape(-1).tolist() ,
-            observation  = np.concatenate([self.state["ur_j_pos"].get_values_std_order(), self.state["ur_j_vel"].get_values_std_order(), self.state["gripper_pose"], gripper_to_obj_pose])
+            observation  = np.concatenate([self.state["ur_j_pos_norm"].get_values_std_order(), self.state["ur_j_vel"].get_values_std_order(), self.state["gripper_pose"], gripper_to_obj_pose])
         )
         return obs
 
@@ -598,7 +592,7 @@ class action_state():
     Encapsulates an action
     Includes: 
         joints -> dict structure
-            * ur_j_pos     (ur_joint_dict) : joint positions in angles (with zeros)
+            * ur_j_pos_norm     (ur_joint_dict) : joint positions in angles (with zeros)
         values -> np arrays, by standard order. Divides arm joints from finger joints to make gripper vs arm controller easier
             * arm_joints (np.array), joints in std order
             * finger_joints (np.array), joints in std order
@@ -608,36 +602,20 @@ class action_state():
         """
         Populates the structure with:
             joints -> dict structure
-                * ur_j_pos     (ur_joint_dict) : joint positions in angles (with zeros)
+                * ur_j_pos_norm     (ur_joint_dict) : joint positions in angles (with zeros)
             values -> np arrays, by standard order. Divides arm joints from finger joints to make gripper vs arm controller easier
                 * arm_joints (np.array), joints in std order
                 * finger_joints (np.array), joints in std order
         """
 
         self.joints={
-            "ur_j_pos": ur_utils.UR5ROBOTIQ().ur_joint_dict()
+            "ur_j_pos_norm": ur_utils.UR5ROBOTIQ().ur_joint_dict()
         }
         self.values={
-            "arm_joints"    : np.array( self.joints["ur_j_pos"].get_arm_joints_value() ),
-            "finger_joints" : np.array( self.joints["ur_j_pos"].get_finger_joints_value() )
+            "arm_joints"    : np.array( self.joints["ur_j_pos_norm"].get_arm_joints_value() ),
+            "finger_joints" : np.array( self.joints["ur_j_pos_norm"].get_finger_joints_value() )
         }
         self.finger_threshold = 0.01 #open: x<0.01, close:x>=0.01
-
-    def get_action_from_env_state(self, env_state):
-        """
-        Updates the action joints (joint angles), based on the environment's state
-        
-        Args:
-            env_state (env_state object): current environment's state
-
-        Returns:
-            self (So that: new_action=action_state().get_action_from_env_state(env_state) )
-        """
-
-        self.update_action(env_state.state["ur_j_pos"].get_values_std_order() )
-
-
-        return self
 
     def update_action(self, new_action_std_order):
         """
@@ -648,19 +626,19 @@ class action_state():
             new_action_std_order (np array): array in std order indicating joint values
 
         Returns:
-            self (So that: new_action=action_state().get_action_from_env_state(env_state) )
+            self (So that: new_action=action_state().update_action(env_state) )
         """
 
         #updates joint dictionary
-        self.joints["ur_j_pos"].set_values_std_order(new_action_std_order)
+        self.joints["ur_j_pos_norm"].set_values_std_order(new_action_std_order)
 
         #finger action either 0-open, 1-close
-        for key in self.joints["ur_j_pos"].finger_joints:
-            self.joints["ur_j_pos"].joints[key] = int(0) if self.joints["ur_j_pos"].joints[key] < self.finger_threshold else int(1)
+        for key in self.joints["ur_j_pos_norm"].finger_joints:
+            self.joints["ur_j_pos_norm"].joints[key] = int(0) if self.joints["ur_j_pos_norm"].joints[key] < self.finger_threshold else int(1)
 
         #updates arm and finger arrays
-        self.values ["arm_joints"]    = np.array( self.joints["ur_j_pos"].get_arm_joints_value() )       #std order
-        self.values ["finger_joints"] =      int( self.joints["ur_j_pos"].get_finger_joints_value() [0]) #std order
+        self.values ["arm_joints"]    = np.array( self.joints["ur_j_pos_norm"].get_arm_joints_value() )       #std order
+        self.values ["finger_joints"] =      int( self.joints["ur_j_pos_norm"].get_finger_joints_value() [0]) #std order
 
 
         return self
@@ -685,14 +663,14 @@ class action_state():
         
     def to_array(self):
         """
-        Retrieves the action as a list. The order is: (ur_j_pos  )
-        The ur_j_pos  are displayed in standard order (from base to end effector)
+        Retrieves the action as a list. The order is: (ur_j_pos_norm  )
+        The ur_j_pos_norm  are displayed in standard order (from base to end effector)
         
         Args:
             None
 
         Returns:
-            action_array (list): ordered list containing the current action description. The array includes the following: ur_j_pos (std order)
+            action_array (list): ordered list containing the current action description. The array includes the following: ur_j_pos_norm (std order)
         """
 
         action_array= self.values["arm_joints"].tolist() + self.values["finger_joints"].tolist()
@@ -783,7 +761,7 @@ class server_state():
 
     def update_ur_joint_pos(self, new_joint_pos):
         """
-        Updates the joints' positions in angles :
+        Updates the joints' positions in angles and normalizes joints between -pi and pi
         
         Args:
             new_joint_pos (ur_joint_dict): Joint position object, new values
@@ -791,8 +769,15 @@ class server_state():
         Returns:
             none
         """
-
-        self.state["ur_j_pos"]=copy.deepcopy(new_joint_pos)
+        joints=new_joint_pos.get_values_std_order()
+        for i in range(len(joints)):
+            while joints[i] > np.pi:
+                joints[i]-=np.pi
+                print("pi")
+            while joints[i] < -np.pi:
+                joints[i]+=np.pi
+                print("-pi")
+        self.state["ur_j_pos"]=new_joint_pos.set_values_std_order(joints)
 
     def update_ur_joint_vel(self, new_joint_vel):
         """
@@ -925,26 +910,11 @@ class server_state():
 
         new_env_state=env_state()
 
-        # Transform cartesian coordinates of target to polar coordinates 
-        # with respect to the end effector frame
-        #target_coord = np.nan_to_num(self.state["target_xyzrpy"])[0:3]
-        #ee_base_transform =   np.nan_to_num(self.state["ee_base_transform"])
-        
-        #ee_to_base_translation = ee_base_transform[0:3]
-        #ee_to_base_quaternion = ee_base_transform[3:8]
-        #ee_to_base_rotation = R.from_quat(ee_to_base_quaternion)
-        #base_to_ee_rotation = ee_to_base_rotation.inv()
-        #base_to_ee_quaternion = base_to_ee_rotation.as_quat()
-        #base_to_ee_translation = - ee_to_base_translation
-
-        #target_coord_ee_frame = utils.change_reference_frame(target_coord,base_to_ee_translation,base_to_ee_quaternion)
-        #target_polar = utils.cartesian_to_polar_3d(target_coord_ee_frame)
-
-
         ##update
         #new_env_state.update_target_polar(target_polar)
-        ur_j_pos_norm=ur_utils.UR5ROBOTIQ(robotiq).normalize_ur_joint_dict(joint_dict=self.state["ur_j_pos"])
-        new_env_state.update_ur_j_pos(ur_j_pos_norm)
+        new_env_state.update_ur_j_pos(self.state["ur_j_pos"])
+        #ur_j_pos_norm=ur_utils.UR5ROBOTIQ(robotiq).normalize_ur_joint_dict(joint_dict=self.state["ur_j_pos"])
+        #new_env_state.update_ur_j_pos_norm(ur_j_pos_norm)
         new_env_state.update_ur_j_vel(self.state["ur_j_vel"])
         new_env_state.update_gripper_pose(self.state["gripper_pose"])
         #new_env_state.update_cubes_pose(self.state["cubes_pose"], self.number_of_cubes)
