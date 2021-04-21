@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 
 import numpy as np
+import copy
 
 class UR5():
     """Universal Robots UR5 utilities.
@@ -278,13 +279,13 @@ class UR5ROBOTIQ():
         if (robotiq==85): #if robotiq 85, finger joint lims are 0 and 0.8
             #max_joint_pos=   np.array([6.28,6.28,6.28,6.28,6.28,6.28, 0.8])
             #min_joint_pos= - np.array([6.28,6.28,6.28,6.28,6.28,6.28, 0])
-            max_joint_pos=  np.array([ 2*np.pi, -2*np.pi/5,  2.7,      0,  np.pi,  np.pi, 0.8])
-            min_joint_pos=  np.array([-2*np.pi, -3*np.pi/5, -2.7, -np.pi, -np.pi, -np.pi, 0])
+            max_joint_pos=  np.array([ np.pi, -2*np.pi/5,  2.7,      0,  np.pi,  np.pi, 0.8])
+            min_joint_pos=  np.array([-np.pi, -3*np.pi/5, -2.7, -np.pi, -np.pi, -np.pi, 0])
         elif (robotiq==140): #if robotiq 140, finger joint lims are 0 and 0.7
             #max_joint_pos =   np.array([6.28,6.28,6.28,6.28,6.28,6.28, 0.7])
             #min_joint_pos = - np.array([6.28,6.28,6.28,6.28,6.28,6.28, 0])
-            max_joint_pos=  np.array([ 2*np.pi, -2*np.pi/5,  2.7,      0,  np.pi,  np.pi, 0.7])
-            min_joint_pos=  np.array([-2*np.pi, -3*np.pi/5, -2.7, -np.pi, -np.pi, -np.pi, 0])
+            max_joint_pos=  np.array([ np.pi, -2*np.pi/5,  2.7,      0,  np.pi,  np.pi, 0.7])
+            min_joint_pos=  np.array([-np.pi, -3*np.pi/5, -2.7, -np.pi, -np.pi, -np.pi, 0])
 
         else:
             raise InvalidStateError('Invalid gripper')
@@ -359,17 +360,22 @@ class UR5ROBOTIQ():
         Returns:
             norm_joints (ur_joint_dict): Joint position object with values normalized between [-1 , 1]
         """
-        joints=joint_dict.get_values_std_order()
+        joints = joint_dict.get_values_std_order()
+        normalized_joints = copy.deepcopy(joints)
+        #max value a joint can take
+        max_joints = self.ur_joint_max_pos.get_values_std_order()
+        #min value a joint can take
+        min_joints = self.ur_joint_min_pos.get_values_std_order()
+        #joint range and auxiliar vars to calculate normalized values
+        joint_range = max_joints - min_joints
+        joint_delta = joint_range/2
+        central_joint_value=min_joints + joint_range/2
+        
+        #joint normalization, results in values between -1 and 1
+        normalized_joints= (joints - central_joint_value)/joint_delta
+        #convert to dict obj
+        new_joints_dict=self.ur_joint_dict().set_values_std_order(normalized_joints)
 
-        for i in range(len(joints)):
-            if joints[i] <= 0:
-                if not self.ur_joint_min_pos.get_values_std_order()[i]==0: #for finger_joint, min position is 0-> divide by zero
-                    joints[i] = joints[i]/abs(self.ur_joint_min_pos.get_values_std_order()[i])
-            else:
-                if not self.ur_joint_max_pos.get_values_std_order()[i]==0: #for finger_joint, min position is 0-> divide by zero
-                    joints[i] = joints[i]/abs(self.ur_joint_max_pos.get_values_std_order()[i])
-
-        new_joints_dict=self.ur_joint_dict().set_values_std_order(joints)
         return new_joints_dict
 
 
