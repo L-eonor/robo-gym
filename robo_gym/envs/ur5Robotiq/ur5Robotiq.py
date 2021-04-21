@@ -406,7 +406,7 @@ class UR5RobotiqEnv(gym.GoalEnv):
         return self.action_space
 
     #get state
-    
+
     def _get_current_state(self):
         """Requests the current robot state (simulated or real)
 
@@ -962,7 +962,7 @@ class GraspObjectUR5Sim(GraspObjectUR5, Simulation):
 
 
     cmd = "roslaunch ur_robot_server ur5Robotiq_sim_robot_server.launch \
-        max_velocity_scale_factor:=0.2 \
+        max_velocity_scale_factor:=0.6 \
         action_cycle_rate:=20 \
         world_name:=cubes.world \
         rviz_gui:=false \
