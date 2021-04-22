@@ -209,12 +209,12 @@ class UR5RobotiqEnv(gym.GoalEnv):
         abs_difference = np.absolute(abs_joint_values - self.state.state["ur_j_pos"].get_values_std_order())[:-1]
         
         #resends untill completion
-        while not ((abs_difference<self.distance_threshold).all()):
-            # Send action to Robot Server
-            if not self.client.send_action(new_action_dict.get_values_ros_order().tolist()):
-                raise RobotServerError("send_action")       
-            self.state, _ = self._get_current_state()
-            abs_difference=np.absolute(abs_joint_values - self.state.state["ur_j_pos"].get_values_std_order())[:-1]
+        #while not ((abs_difference<self.distance_threshold).all()):
+        #    # Send action to Robot Server
+        #    if not self.client.send_action(new_action_dict.get_values_ros_order().tolist()):
+        #        raise RobotServerError("send_action")       
+        #    self.state, _ = self._get_current_state()
+        #    abs_difference=np.absolute(abs_joint_values - self.state.state["ur_j_pos"].get_values_std_order())[:-1]
         
         return abs_joint_values
 
@@ -773,10 +773,8 @@ class server_state():
         for i in range(len(joints)):
             while joints[i] > np.pi:
                 joints[i]-=np.pi
-                print("pi")
             while joints[i] < -np.pi:
                 joints[i]+=np.pi
-                print("-pi")
         self.state["ur_j_pos"]=new_joint_pos.set_values_std_order(joints)
 
     def update_ur_joint_vel(self, new_joint_vel):
