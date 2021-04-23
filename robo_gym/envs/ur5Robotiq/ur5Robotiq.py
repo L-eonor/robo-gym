@@ -205,16 +205,11 @@ class UR5RobotiqEnv(gym.GoalEnv):
         #create object to deal with joint order
         new_action_dict=self.ur_joint_dict().set_values_std_order(values=abs_joint_values)
 
-        #compute the difference between real joint pos and desired pos (from action)
-        abs_difference = np.absolute(abs_joint_values - self.state.state["ur_j_pos"].get_values_std_order())[:-1]
-        
-        #resends untill completion
-        #while not ((abs_difference<self.distance_threshold).all()):
-        #    # Send action to Robot Server
-        #    if not self.client.send_action(new_action_dict.get_values_ros_order().tolist()):
-        #        raise RobotServerError("send_action")       
-        #    self.state, _ = self._get_current_state()
-        #    abs_difference=np.absolute(abs_joint_values - self.state.state["ur_j_pos"].get_values_std_order())[:-1]
+        # Send action to Robot Server
+        if not self.client.send_action(new_action_dict.get_values_ros_order().tolist()):
+            raise RobotServerError("send_action")  
+
+        self.state, _ = self._get_current_state()
         
         return abs_joint_values
 
