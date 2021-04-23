@@ -935,7 +935,7 @@ class ReachObjectUR5(UR5RobotiqEnv):
         reward = -1 * euclidean_dist_3d
 
         if euclidean_dist_3d.all() <= self.distance_threshold:
-            reward = [ 100.0]
+            reward =  100.0
 
         return reward
 
