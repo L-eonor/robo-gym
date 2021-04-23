@@ -571,7 +571,7 @@ class env_state():
             #where to put the gripper? in the cube to reach
             desired_goal = self.state["cubes_pose"][1:].reshape(-1).tolist() ,
             #where the gripper really is
-            achieved_goal= self.state["gripper_pose"][1:].reshape(-1).tolist() ,
+            achieved_goal= self.state["gripper_pose"].tolist() ,
             observation  = np.concatenate([self.state["ur_j_pos_norm"].get_values_std_order(), self.state["ur_j_vel"].get_values_std_order(), self.state["gripper_pose"], gripper_to_obj_pose])
         )
 
@@ -922,12 +922,12 @@ class ReachObjectUR5(UR5RobotiqEnv):
     def compute_reward(self, achieved_goal, desired_goal, info):
         reward = 0
         done = False
-
+        
         # Calculate distance to the target
         #desired goal
-        cubes_destination_pose = np.array(desired_goal )[:, 0:3]
+        cubes_destination_pose = np.array(desired_goal )[0:3]
         #achieved goal
-        cube_real_pose         = np.array(achieved_goal)[:, 0:3]  #for now, requests the only cube's pose
+        cube_real_pose         = np.array(achieved_goal)[0:3]  #for now, requests the only cube's pose
         #euclidean norm
         euclidean_dist_3d      = self._distance_to_goal(cubes_destination_pose, cube_real_pose)
 
@@ -937,27 +937,7 @@ class ReachObjectUR5(UR5RobotiqEnv):
         if euclidean_dist_3d.all() <= self.distance_threshold:
             reward = [ 100.0]
 
-
-        '''
-        # Calculate distance to the target
-        #desired goal
-        cubes_destination_pose = np.array(desired_goal )[:, 0:3]
-        #achieved goal
-        cube_real_pose         = np.array(achieved_goal)[:, 0:3]  #for now, requests the only cube's pose
-        #euclidean norm
-        euclidean_dist_3d      = self._distance_to_goal(cubes_destination_pose, cube_real_pose)
-
-        # Reward base
-        reward = -1 * euclidean_dist_3d
-
-        if euclidean_dist_3d.all() <= self.distance_threshold:
-            reward = [ 100.0]
-
-        # Check if robot is in collision
-        #if self.state.state["collision"] [-1] == 1:
-        #    reward = [-400.0]
-        '''
-        return reward[0]
+        return reward
 
 class ReachObjectUR5Sim(ReachObjectUR5, Simulation):
     #cmd = "roslaunch ur_robot_server ur5Robotiq_sim_robot_server.launch \
