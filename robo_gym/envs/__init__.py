@@ -13,3 +13,4 @@ from robo_gym.envs.ur5.ur5 import EndEffectorPositioningUR5DoF5Sim
 from robo_gym.envs.ur5.ur5 import EndEffectorPositioningUR5DoF5Rob
 from robo_gym.envs.ur5.ur5 import MovingBoxTargetUR5DoF3Sim
 from robo_gym.envs.ur5Robotiq.ur5Robotiq import GraspObjectUR5Sim
+from robo_gym.envs.ur5Robotiq_reach.ur5Robotiq_reach import ReachObjectUR5Sim
