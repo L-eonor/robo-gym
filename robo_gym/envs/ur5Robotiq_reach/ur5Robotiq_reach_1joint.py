@@ -180,8 +180,8 @@ class UR5RobotiqEnv(gym.GoalEnv):
             print(obs)
             raise InvalidStateError()
 
-        achieved_goal = np.array(obs['achieved_goal'], ndmin=2)
-        desired_goal  = np.array(obs['desired_goal'], ndmin=2)
+        achieved_goal = np.array(obs['achieved_goal'])#, ndmin=2)
+        desired_goal  = np.array(obs['desired_goal'] )#, ndmin=2)
 
         info, done = self._update_info_and_done(achieved_goal=achieved_goal, desired_goal=desired_goal)
 
@@ -267,13 +267,13 @@ class UR5RobotiqEnv(gym.GoalEnv):
     #reward/done/info
     def _update_info_and_done(self, desired_goal, achieved_goal):
         info = {
-            'is_success': self._is_success(np.array(achieved_goal)[:, 0:3], np.array(desired_goal )[:, 0:3]),
+            'is_success': self._is_success(np.array(achieved_goal), np.array(desired_goal )),
             'final_status': None,
             'destination_pose': self.destination_pose,
         }
         done=False
 
-        euclidean_dist_3d      = self._distance_to_goal(np.array(desired_goal )[:, 0:3], np.array(achieved_goal)[:, 0:3])
+        euclidean_dist_3d      = self._distance_to_goal(np.array(desired_goal ), np.array(achieved_goal))
 
         if euclidean_dist_3d.all() <= self.distance_threshold:
             done = True
@@ -532,10 +532,10 @@ class env_state():
         
         obs=dict(
             #where to put the gripper? in the cube to reach
-            desired_goal = self.state["destination_pose"][0:3].reshape(-1).tolist() ,
+            desired_goal = self.state["destination_pose"][0:3].reshape(-1) ,
             #where the gripper really is
-            achieved_goal= self.state["gripper_pose"][0:3].tolist() ,
-            observation  = np.concatenate([self.state["ur_j_pos_norm"].get_values_std_order()[0:1], self.state["ur_j_vel"].get_values_std_order()[0:1], self.state["gripper_pose"][0:3], gripper_to_obj_pose])
+            achieved_goal= self.state["gripper_pose"][0:3].reshape(-1) ,
+            observation  = np.concatenate([self.state["ur_j_pos_norm"].get_values_std_order()[0:1], self.state["ur_j_vel"].get_values_std_order()[0:1], self.state["gripper_pose"][0:3], gripper_to_obj_pose]).reshape(-1)
         )
 
         return obs
@@ -845,19 +845,21 @@ class ReachObjectUR5(UR5RobotiqEnv):
         
         # Calculate distance to the target
         #desired goal
-        destination_pose = np.array(desired_goal )[0:3]
+        destination_pose = desired_goal#np.array(desired_goal )
         #achieved goal
-        cube_real_pose         = np.array(achieved_goal)[0:3]  #for now, requests the only cube's pose
+        cube_real_pose         = achieved_goal#np.array(achieved_goal)  #for now, requests the only cube's pose
         #euclidean norm
-        euclidean_dist_3d      = self._distance_to_goal(destination_pose, cube_real_pose)
+        euclidean_dist_3d      = self._distance_to_goal(destination_pose, cube_real_pose).reshape(-1)
 
         # Reward base
         reward = -1 * euclidean_dist_3d
+        
+        corrected_reward=np.array([100.0 if np.absolute(r)<=self.distance_threshold else r for r in reward], dtype='float32')
 
-        if euclidean_dist_3d.all() <= self.distance_threshold:
-            reward =  100.0
+        if len(corrected_reward)==1:
+            corrected_reward=corrected_reward[0]
 
-        return reward
+        return corrected_reward
 
 class ReachObjectUR5Sim(ReachObjectUR5, Simulation):
     #cmd = "roslaunch ur_robot_server ur5Robotiq_sim_robot_server.launch \
@@ -872,5 +874,6 @@ class ReachObjectUR5Sim(ReachObjectUR5, Simulation):
         rviz_gui:=false \
         gazebo_gui:=true"
     def __init__(self, ip=None, lower_bound_port=None, upper_bound_port=None, gui=False, **kwargs):
+        #ip='127.0.0.1'
         Simulation.__init__(self, self.cmd, ip, lower_bound_port, upper_bound_port, gui, **kwargs)
         ReachObjectUR5.__init__(self, rs_address=self.robot_server_ip, max_episode_steps=500, robotiq=85, **kwargs)
