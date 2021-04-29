@@ -67,7 +67,7 @@ register(
 register(
     id='ReachObjectUR5Sim-v0',
     entry_point='robo_gym.envs:ReachObjectUR5Sim',
-    max_episode_steps=1000
+    max_episode_steps=500
 )
 
 
