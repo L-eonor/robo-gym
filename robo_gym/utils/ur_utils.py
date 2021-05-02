@@ -586,6 +586,7 @@ class kinematics_model():
             self.alpha_offsets=np.array([0, 0, 0, 0, 0, 0], dtype=np.float32)
             self.alpha=self.alpha-self.alpha_offsets
 
+            #the robots origin: where is it placed? It is 0.1m above the ground from the urdf files
             self.origin=np.array([0, 0, 0.1], dtype=np.float32)
             #self.wrist_offset=np.array([np.pi/2, np.pi/2, -np.pi])
 
@@ -600,6 +601,7 @@ class kinematics_model():
 
             self.origin=np.array([0, 0, 0], dtype=np.float32)
             #self.wrist_offset=np.array([0, 0, 0])
+
         else:
             print("error: Invalid ur model")
             raise NotImplementedError
@@ -719,7 +721,7 @@ class kinematics_model():
     #   Inverse kinematics
     ################################################################
     
-    def inverse_kin(self, pose, orientation=None):
+    def inverse_kin(self, pose, orientation):
 
         """
         Returns the possible joint combinations that results in the pose and orientation defined
@@ -738,9 +740,6 @@ class kinematics_model():
         pose_vector_form=np.reshape([pose[0], pose[1], pose[2], 1], (-1, 1))
         #matrix that enflobes the orientation and the pose
         pose_full_form=np.hstack((np.vstack((orientation, np.zeros((1, 3)))), pose_vector_form))
-        
-        #orientation=np.array([[1, 0, 0], [0, 1, 0], [0, 0, -1]])
-        #orientation=np.array([[0, 0, 1], [1, 0, 0], [0, 1, 0]])
 
         #one line means 1 option for each joint (6 joints), there are 8 possibilities for the same ee pose
         self.joints_ik=np.zeros((8, 6), dtype=np.float32) #thetas are the joint variables
@@ -832,10 +831,10 @@ class kinematics_model():
             self.joints_ik[hypothesis_index+1, 2] = -theta3
 
         #deletes impossible hypotesis
-        valid_joints=copy.deepcopy(self.joints_ik)
+        possible_joints=copy.deepcopy(self.joints_ik)
         for i in impossible_combinations:
-            valid_joints=np.delete(valid_joints, i, axis=0)
-        self.joints_ik=copy.deepcopy(valid_joints)
+            possible_joints=np.delete(possible_joints, i, axis=0)
+        self.joints_ik=copy.deepcopy(possible_joints)
             
         #####################
         # theta 2 and 4 (index 1 and 3) #
@@ -883,10 +882,78 @@ class kinematics_model():
             self.joints_ik[hypothesis_index, 3]=np.arctan2(T_34[1,0], T_34[0,0])
 
 
+        #removes lines containing nan values
+        self.joints_ik=self.joints_ik[~np.isnan(self.joints_ik).any(axis=1)]
+
         #compensates offsets
         self.joints_ik=self.joints_ik - np.repeat([self.theta_offsets], self.joints_ik.shape[0], axis=0)
         return self.joints_ik
-        
+       
+    ################################################################
+    #   choose inverse kin possibility
+    ################################################################ 
+
+    def get_joint_combination (self, pose, orientation, current_joints):
+        """
+        Returns one joint combination to achieve the input pose and orientation. If returns -1 there are no valid/possible combinations
+
+        Args
+            pose->  coordinates of the ee frame (x, y, z)
+            ee_orientation(3*3)-> the orientation: x-> normal, y-> sliding (fingers movement), z-> approach(direction to object)
+            current_joints(1*6)-> current robot joints, in std order
+        Returns
+            chosen_combination(1*6)-> possible and valid combination of joints. Returns None if it is impossible
+        """
+        #orientation=np.array([[1, 0, 0], [0, 1, 0], [0, 0, -1]])
+        #orientation=np.array([[0, 0, 1], [1, 0, 0], [0, 1, 0]])
+
+        possible_joints=self.inverse_kin(pose=pose, orientation=orientation)
+        #print("possible_joints")
+        #print(possible_joints)
+
+        #there are any possible combinations?
+        if len(possible_joints)==0:
+            return None
+
+        #Evaluates every valid combination: computes joint centers and finds if they are above the ground (z>0)
+        valid_joints=[]
+        for joint_combination in possible_joints:
+            joints_without_offset=joint_combination-self.theta_offsets
+
+            #computes joint centers and tests z coordinate
+            T_matrix=np.eye(4)
+            for joint_index in range(len(joints_without_offset)):
+                theta_i=joints_without_offset[joint_index]
+                A_i=self.homogeneous_transformation_i_var_theta(joint_index, theta_i)
+                T_matrix=np.matmul(T_matrix, A_i)
+
+                frame_center=T_matrix[0:3, -1]
+                frame_center_with_correction=frame_center + self.origin
+                frame_center_z_coord=frame_center_with_correction[-1]
+
+                #if joint is below ground, delete possibility
+                if(frame_center_z_coord<0):
+                    break
+                #all all joints from the combination are valid, append to valid joints
+                if(joint_index==len(joints_without_offset)-1):
+                    if(len(valid_joints)==0):
+                        valid_joints=np.reshape(joint_combination, (1, len(joint_combination)))
+                    else:
+                        valid_joints=np.vstack((valid_joints, joint_combination))
+                        
+        #there are any valid combinations?
+        if len(valid_joints)==0:
+            return None
+
+        #Evaluates the valid joints in relation to the current joints; computes the difference and picks up the most similar combination
+        #difference between each possibility and current joints
+        joint_difference=np.abs(valid_joints-current_joints)
+        total_difference_per_combination=np.sum(joint_difference, axis=1)
+        #picks up the most similar combination
+        chosen_combination=valid_joints[np.argmin(total_difference_per_combination), :]
+
+
+
 
 
 
