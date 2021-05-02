@@ -561,9 +561,10 @@ class UR5ROBOTIQ():
             """
             return len(self.get_finger_joints_value())
 
-
-
 class kinematics_model():
+    """
+    Deals with the ur kinematics
+    """
     def __init__(self, ur_model='ur5', gripper_offset=0.15):
 
         #DH params
@@ -951,12 +952,6 @@ class kinematics_model():
         total_difference_per_combination=np.sum(joint_difference, axis=1)
         #picks up the most similar combination
         chosen_combination=valid_joints[np.argmin(total_difference_per_combination), :]
-
-
-
-
-
-
     
     def normaliza_pi(self, x):
         normalized=copy.deepcopy(x)
