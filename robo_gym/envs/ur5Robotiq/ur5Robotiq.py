@@ -57,7 +57,6 @@ class UR5RobotiqEnv(gym.GoalEnv):
         self.elapsed_steps = 0
         self.seed()
 
-
         # Initialize environment state
         self.state = env_state()
         self.last_position_on_success = []
@@ -71,11 +70,14 @@ class UR5RobotiqEnv(gym.GoalEnv):
 
         #observation space
         self.destination_pose=None
-        new_env_state, _ =self._get_current_state() #number of cubes
+        new_env_state, _ =self._get_current_state() #this is required to get the number of cubes
         self.observation_space = self._get_observation_space_with_cubes(number_of_objs=new_env_state.number_of_cubes)
 
         #action space
         self.action_space = self._get_action_space()
+
+        #kinematics:
+        self.kinematics=ur_utils.kinematics_model(ur_model='ur5', gripper_offset=0.15)
           
     def seed(self, seed=None):
         self.np_random, seed = seeding.np_random(seed)
@@ -101,7 +103,9 @@ class UR5RobotiqEnv(gym.GoalEnv):
         ##############################
         # Setting robot server state #
         ##############################
-
+        '''
+        Isto tem de ser mudado para ser desired pose + gripper state (como na action)
+        '''
         # Set initial robot joint positions, in standard order
         if initial_joint_positions:
             assert len(initial_joint_positions) == self.ur5.number_of_joint_positions
@@ -110,8 +114,8 @@ class UR5RobotiqEnv(gym.GoalEnv):
             ur5_initial_joint_positions = self.last_position_on_success
         else:
             ur5_initial_joint_positions = self._get_initial_joint_positions()
-        #print("initial joint pos")
-        #print(ur5_initial_joint_positions)
+        ur5_initial_joint_positions=[0,   0.04411338, -0.45421788,  1.9809008,   1.5707959,   1.5641292, 0 ]
+        #new_pose, new_ee_orientation=self.kinematics.forward_kin(ur5_initial_joint_positions[0:6])
 
         # update initial joint positions
         rs_state = server_state()
@@ -129,6 +133,9 @@ class UR5RobotiqEnv(gym.GoalEnv):
         #Get current state, update obs space with cubes and validate
         self.state, rs_state =self._get_current_state()
         
+        '''
+        Isto tem de ser mudado para o goal 
+        '''
         # Set destination pose
         if destination_pose:
             assert len(destination_pose) == 6
@@ -136,9 +143,6 @@ class UR5RobotiqEnv(gym.GoalEnv):
             destination_pose = self._get_destination_pose()
         self.destination_pose = destination_pose
         self.state.update_destination_pose(self.destination_pose)
-        #print("destination pose after update")
-        #print(self.state.state["destination_pose"])
-
 
         # check if current position is in the range of the initial joint positions
         if (len(self.last_position_on_success) == 0) or (type=='random'):
@@ -151,15 +155,15 @@ class UR5RobotiqEnv(gym.GoalEnv):
                     print(joint_positions[joint])
                     raise InvalidStateError('Reset joint positions are not within defined range')
 
-
         # go one empty action and check if there is a collision
-        action = self.state.state["ur_j_pos_norm"].get_values_std_order()[0]
-        #print("reset action")
-        #print(action)
-
+        action = np.concatenate((self.state.state["gripper_pose"], [0], [0]))
+        
         obs, reward, done, info = self.step( action ) 
         self.elapsed_steps = 0
 
+        '''
+        isto pode sair porque nao há colisoes
+        '''
         if done and info['final_status'] == 'collision':
             print(obs)
             raise InvalidStateError('Reset started in a collision state')
@@ -170,11 +174,12 @@ class UR5RobotiqEnv(gym.GoalEnv):
         self.elapsed_steps += 1
         
         action = np.clip(action, self.action_space.low, self.action_space.high)
+
         # Check if the action is within the action space
         assert self.action_space.contains(action ), "%r (%s) invalid" % (action, type(action))
 
         #create action object and send to robot server
-        action_absolute = self._send_action(action)
+        joints_absolute = self._send_action(action=action)
 
         # obs, reward, done, info
         obs = self.state.get_obs()
@@ -197,27 +202,24 @@ class UR5RobotiqEnv(gym.GoalEnv):
     def _reward(self, rs_state, action):
         return 0, False, {}
 
-    def _send_action(self, action):
-        """
-        sends action to robot server
-        action received is normalized and in std order
-        """
-        #reformulate action
-        rest_of_the_action=self.state.state["ur_j_pos_norm"].get_values_std_order()
-        rest_of_the_action[0]=copy.deepcopy(action)
-        action=rest_of_the_action
-        #print("rest of the action")
-        #print(rest_of_the_action)
-
-        # Scale action
-        abs_joint_values=np.zeros(len(action), dtype='float32')
-        abs_joint_values = (self.max_joint_pos *(1 + action)+ self.min_joint_pos * (1-action))/2
+    def _send_action(self, action, gripper=0):
         
-        #print("abs joint")
-        #print(abs_joint_values)
+        #from cartesian space to joint space, fixed orientation
+        #pose
+        object_pose=action[0:3]
+        gripper_orientation=action[3]
+        self.finger_threshold = 0.01 #open: x<0.01, close:x>=0.01
+        gripper=int(0) if action[4] < self.finger_threshold else int(1)
+
+        #ee orientation
+        ee_orientation=np.array([[np.cos(gripper_orientation), np.sin(gripper_orientation), 0], [np.sin(gripper_orientation), -np.cos(gripper_orientation), 0], [0, 0, -1]])
+        #current robot joints
+        current_joints=self.state.state["ur_j_pos"].get_arm_joints_value()
+        desired_joints_std_order=self.kinematics.get_joint_combination(pose=object_pose, orientation=ee_orientation, current_joints=current_joints)
+        desired_joints_std_order_with_gripper=np.concatenate((desired_joints_std_order, [gripper]))        
 
         #create object to deal with joint order
-        new_action_dict=self.ur_joint_dict().set_values_std_order(values=abs_joint_values)
+        new_action_dict=self.ur_joint_dict().set_values_std_order(values=desired_joints_std_order_with_gripper)
 
         # Send action to Robot Server
         if not self.client.send_action(new_action_dict.get_values_ros_order().tolist()):
@@ -225,7 +227,7 @@ class UR5RobotiqEnv(gym.GoalEnv):
 
         self.state, _ = self._get_current_state()
 
-        return abs_joint_values
+        return desired_joints_std_order
 
     #initialization routines
 
@@ -259,10 +261,10 @@ class UR5RobotiqEnv(gym.GoalEnv):
 
         #force destination pose to be in the gripper circle
         target_angle = np.random.default_rng().uniform(low=-np.pi, high=np.pi)
-        radius=np.linalg.norm(self.state.state["gripper_pose"][0:2])
+        radius=np.linalg.norm(self.state.state["gripper_pose_gazebo"][0:2])
         x_coordinate=np.cos(target_angle)*radius
         y_coordinate=np.sin(target_angle)*radius
-        z_coordinate=copy.deepcopy(self.state.state["gripper_pose"][2])
+        z_coordinate=copy.deepcopy(self.state.state["gripper_pose_gazebo"][2])
         pose[0:3]=np.array([x_coordinate, y_coordinate, z_coordinate], dtype='float32')
         return pose
     
@@ -304,7 +306,7 @@ class UR5RobotiqEnv(gym.GoalEnv):
 
     def _get_observation_space_with_cubes(self, number_of_objs):
         """Get environment observation space, considering the cubes positioning
-        ( ur_j_pos + ur_j_vel + gripper_pose + gripper_to_obj_dist + cubes_pose + destination_pose)
+        ( ur_j_pos + ur_j_vel + gripper_pose_gazebo + gripper_to_obj_dist + cubes_pose + destination_pose)
 
         Returns:
             gym.spaces: Gym observation space object.
@@ -345,15 +347,17 @@ class UR5RobotiqEnv(gym.GoalEnv):
         min_n_obj_pos=np.array(min_1_obj_pos*number_of_objs)
 
         # Definition of environment observation_space
-        max_observation = np.concatenate(( max_joint_positions[0:1], max_joint_velocities[0:1], max_gripper_pose, max_gripper_to_obj_pose, max_n_obj_pos))
-        min_observation = np.concatenate(( min_joint_positions[0:1], min_joint_velocities[0:1], min_gripper_pose, min_gripper_to_obj_pose, min_n_obj_pos))
+        #max_observation = np.concatenate(( max_joint_positions[0:1], max_joint_velocities[0:1], max_gripper_pose, max_gripper_to_obj_pose, max_n_obj_pos))
+        #min_observation = np.concatenate(( min_joint_positions[0:1], min_joint_velocities[0:1], min_gripper_pose, min_gripper_to_obj_pose, min_n_obj_pos))
+        max_observation = np.concatenate(( max_gripper_pose, max_n_obj_pos))
+        min_observation = np.concatenate(( min_gripper_pose, min_n_obj_pos))
 
+        number_of_goals=1
+        max_achieved_goal = np.full(number_of_goals, 1.0)#np.array(max_gripper_pose)
+        min_achieved_goal = np.full(number_of_goals, 0.0)#np.array(min_gripper_pose)
 
-        max_achieved_goal = np.array(max_gripper_pose)
-        min_achieved_goal = np.array(min_gripper_pose)
-
-        max_desired_goal = np.array(max_gripper_pose)
-        min_desired_goal = np.array(min_gripper_pose)
+        max_desired_goal = np.full(number_of_goals, 1.0)#np.array(max_gripper_pose)
+        min_desired_goal = np.full(number_of_goals, 0.0)#np.array(min_gripper_pose)
 
 
         self.observation_space = spaces.Dict(dict(
@@ -370,9 +374,30 @@ class UR5RobotiqEnv(gym.GoalEnv):
             "finger_joints" : spaces.Discrete (2) #0-open; 1-close
         })
         """
-        #self.action_space = spaces.Box(low=np.full((self.number_of_joints), -1.0), high=np.full((self.number_of_joints), 1.0), dtype=np.float32)
-        self.action_space = spaces.Box(low=np.full(1, -1.0), high=np.full(1, 1.0), dtype=np.float32)
-        
+        #action is the gripper pose and open/close
+        #gripper pose
+        #increase a little bit
+        # * arm length=0.85m is the arm + gripper attatcher + finger offset + arm above the ground
+        # * angles in 0.001 because of precision (pi)
+        gripper_tolerance=0.5
+        abs_max_gripper_pose=0.85+gripper_tolerance
+        angle_tolerance=0.001
+        abs_max_angle=np.pi + angle_tolerance #+/-pi precision might fall off space limits
+        #the gripper's orientation is fixed pointed down
+        max_gripper_pose=np.array([ abs_max_gripper_pose,  abs_max_gripper_pose,  abs_max_gripper_pose])#,  abs_max_angle,  abs_max_angle,  abs_max_angle]
+        min_gripper_pose=np.array([-abs_max_gripper_pose, -abs_max_gripper_pose, -abs_max_gripper_pose])#, -abs_max_angle, -abs_max_angle, -abs_max_angle]
+
+        max_gripper_angle=[np.pi]
+        min_gripper_angle=[0]
+
+        max_gripper_state=[1]
+        min_gripper_state=[0]
+
+        action_max=np.concatenate(( max_gripper_pose, max_gripper_angle, max_gripper_state))
+        action_min=np.concatenate(( min_gripper_pose, min_gripper_angle, min_gripper_state))
+
+        self.action_space = spaces.Box(low=action_min, high=action_max, dtype=np.float32)
+
         return self.action_space
 
     #get state
@@ -401,11 +426,12 @@ class env_state():
     """
     Encapsulates the environment state
     Includes:
-        * ur_j_pos (ur_joint_dict)-> robots' joint angles in a ur_joint_dict 
-        * ur_j_vel (ur_joint_dict) -> robots' joint velocities in a ur_joint_dict
-        * gripper_pose (np.array) -> gripper's pose in xyzrpy
+        * gripper_pose (np array)-> gripper pose from inverse kinematics based on the joint values (x, y, z)
+        * gripper_pose_gazebo (np.array) -> gripper's pose in xyzrpy, estimated by the gazebo enginex, y, z in the base frame
         * cubes_pose (np.array) -> cubes' pose in #id, x, y, z, r, p, y,width,->depth, -height
         * destination_pose (np.array) -> cubes' destination pose in xyzrpy
+        * ur_j_pos (ur_joint_dict)-> robots' joint angles in a ur_joint_dict 
+        * ur_j_vel (ur_joint_dict) -> robots' joint velocities in a ur_joint_dict
         * collision-> is the robot is collision?
 
     """
@@ -413,26 +439,31 @@ class env_state():
     def __init__(self):
         """
         Populates the structure with:
+            * gripper_pose (np array)-> gripper pose from inverse kinematics based on the joint values (x, y, z)
+            * gripper_pose_gazebo (np.array) -> gripper's pose in xyzrpy, estimated by the gazebo enginex, y, z in the base frame
+            * cubes_pose (np.array) -> cubes' pose in #id, x, y, z, r, p, y,width,->depth, -height
+            * destination_pose (np.array) -> cubes' destination pose in xyzrpy
+
             * ur_j_pos     (ur_joint_dict) : joint positions in angles (with zeros)
             * ur_j_pos_norm     (ur_joint_dict) : same as previous, but the joints are normalized between -1, 1
             * ur_j_vel     (ur_joint_dict) : joint velocities (with zeros)
-            * gripper_pose (np.array) -> gripper's pose in xyzrpy
-            * cubes_pose (np.array) -> cubes' pose in xyzrpy
-            * destination_pose (np.array)-> cubes' new pose in xyzrpy
         """
         self.state={
+            "gripper_pose": np.zeros(3, dtype=np.float32),
             "ur_j_pos": ur_utils.UR5ROBOTIQ().ur_joint_dict(),
             "ur_j_pos_norm": ur_utils.UR5ROBOTIQ().ur_joint_dict(),
             "ur_j_vel": ur_utils.UR5ROBOTIQ().ur_joint_dict(),
-            "gripper_pose": np.zeros(6, dtype=np.float32),
+            "gripper_pose_gazebo": np.zeros(6, dtype=np.float32),
             "cubes_pose": [],
             "destination_pose": [],
             "collision":[]
         }
+
+        self.kinematics=ur_utils.kinematics_model(ur_model='ur5', gripper_offset=0.15)
     
     def update_ur_j_pos(self, ur_joint_state):
         """
-        Updates the joints' positions in angles :
+        Updates the joints' positions in angles and gripper pose computed through kinematics:
         
         Args:
             ur_joint_state (ur_joint_dict): Joint position object, new values
@@ -441,8 +472,13 @@ class env_state():
             none
         """
         
+        #joints true value
         self.state["ur_j_pos"]=copy.deepcopy(ur_joint_state)
+        #joints normalized values
         self.state["ur_j_pos_norm"]=ur_utils.UR5ROBOTIQ().normalize_ur_joint_dict(joint_dict=ur_joint_state)
+        #computes finger pose through inverse kinematics and stores it in the state dictionary
+        pose, ee_orientation=self.kinematics.forward_kin(ur_joint_state.get_arm_joints_value())
+        self.state["gripper_pose"]=np.array(pose)
 
     def update_ur_j_vel(self, ur_joint_state):
         """
@@ -471,17 +507,17 @@ class env_state():
         self.state["cubes_pose"]=copy.deepcopy(new_cubes_pose)
         self.number_of_cubes=number_of_cubes
     
-    def update_gripper_pose(self, new_gripper_pose):
+    def update_gripper_pose_gazebo(self, new_gripper_pose_gazebo):
         """
         Updates the gripper pose array
         
         Args:
-            new_gripper_pose (array like): new gripper pose info #x y z r p y
+            new_gripper_pose_gazebo (array like): new gripper pose info #x y z r p y
 
         Returns:
             none
         """
-        self.state["gripper_pose"]=np.array(new_gripper_pose)
+        self.state["gripper_pose_gazebo"]=np.array(new_gripper_pose_gazebo)
 
     def update_destination_pose(self, new_cubes_destination):
         """
@@ -514,37 +550,45 @@ class env_state():
         Returns the object position in relation to gripper
         """
 
-        return self.state["destination_pose"][0:3] - self.state["gripper_pose"][0:3]
+        return self.state["destination_pose"][0:3] - self.state["gripper_pose_gazebo"][0:3]
 
     def to_array(self):
         """
-        Retrieves the current state as a list. The order is: ( ur_j_pos + ur_j_vel + gripper_pose + gripper_to_obj_dist + cubes_pose + destination_pose)
+        Retrieves the current state as a list. The order is: ( ur_j_pos + ur_j_vel + gripper_pose_gazebo + gripper_to_obj_dist + cubes_pose + destination_pose)
         The ur_j_pos and ur_j_vel are displayed in standard order (from base to end effector). Cubes pose ignores index 0 = cube id
         
         Args:
             None
 
         Returns:
-            env_array (list): ordered list containing the current environment's state. The array includes the following: target_polar + ur_j_pos (std order) + ur_j_vel (std_order)+ gripper_pose + cubes_pose + destination_pose
+            env_array (list): ordered list containing the current environment's state. The array includes the following: target_polar + ur_j_pos (std order) + ur_j_vel (std_order)+ gripper_pose_gazebo + cubes_pose + destination_pose
             for the cubes_pose, the id is ignored [1:]
         """
         gripper_to_obj_pose = self._get_target_to_gripper()
 
-        #env_array= self.state["ur_j_pos"].get_values_std_order().tolist() + self.state["ur_j_vel"].get_values_std_order().tolist() + self.state["gripper_pose"].tolist() + gripper_to_obj_pose.tolist() + self.state["cubes_pose"][:, 1:].reshape(-1).tolist() + self.state["destination_pose"].tolist()
-        env_array= self.state["ur_j_pos"].get_values_std_order().tolist() + self.state["ur_j_vel"].get_values_std_order().tolist() + self.state["gripper_pose"].tolist() + gripper_to_obj_pose.tolist() + self.state["cubes_pose"][:, 1:].reshape(-1).tolist() + self.state["destination_pose"].tolist()
+        #env_array= self.state["ur_j_pos"].get_values_std_order().tolist() + self.state["ur_j_vel"].get_values_std_order().tolist() + self.state["gripper_pose_gazebo"].tolist() + gripper_to_obj_pose.tolist() + self.state["cubes_pose"][:, 1:].reshape(-1).tolist() + self.state["destination_pose"].tolist()
+        env_array= self.state["ur_j_pos"].get_values_std_order().tolist() + self.state["ur_j_vel"].get_values_std_order().tolist() + self.state["gripper_pose_gazebo"].tolist() + gripper_to_obj_pose.tolist() + self.state["cubes_pose"][:, 1:].reshape(-1).tolist() + self.state["destination_pose"].tolist()
         print("env array")
         print(env_array)
         return env_array
 
     def get_obs(self):
         gripper_to_obj_pose = self._get_target_to_gripper()
-        
+        '''
         obs=dict(
             #where to put the gripper? in the cube to reach
             desired_goal = self.state["destination_pose"][0:3].reshape(-1) ,
             #where the gripper really is
-            achieved_goal= self.state["gripper_pose"][0:3].reshape(-1) ,
-            observation  = np.concatenate([self.state["ur_j_pos_norm"].get_values_std_order()[0:1], self.state["ur_j_vel"].get_values_std_order()[0:1], self.state["gripper_pose"][0:3], gripper_to_obj_pose, self.state["cubes_pose"][:, 1:].reshape(-1)]).reshape(-1)
+            achieved_goal= self.state["gripper_pose_gazebo"][0:3].reshape(-1) ,
+            observation  = np.concatenate([self.state["ur_j_pos_norm"].get_values_std_order()[0:1], self.state["ur_j_vel"].get_values_std_order()[0:1], self.state["gripper_pose_gazebo"][0:3], gripper_to_obj_pose, self.state["cubes_pose"][:, 1:].reshape(-1)]).reshape(-1)
+        )
+        '''
+        obs=dict(
+            #where to put the gripper? in the cube to reach
+            desired_goal = [0] ,
+            #where the gripper really is
+            achieved_goal= [0] ,
+            observation  = np.concatenate([self.state["gripper_pose"], self.state["cubes_pose"][:, 1:].reshape(-1)]).reshape(-1)
         )
 
         return obs
@@ -699,7 +743,7 @@ class server_state():
         * ur_j_pos-> robots' joint angles in a ur_joint_dict
         * ur_j_vel-> robots' joint velocities in a ur_joint_dict
         * collision-> array len=1
-        * gripper_pose-> array len=6 x, y, z, r, p, y 
+        * gripper_pose_gazebo-> array len=6 x, y, z, r, p, y 
         * cubes_pose-> array len=7 #id, x, y, z, r, p, y,width,->depth, -height
 
     """
@@ -710,7 +754,7 @@ class server_state():
             * ur_j_pos          (ur_joint_dict) : joint positions in angles (with zeros)
             * ur_j_vel          (ur_joint_dict) : joint velocities (with zeros)
             * collision         (np.array)      : collision array
-            * gripper_pose      (np.array)      : where is the gripper in the world frame? #id xyzrpy
+            * gripper_pose_gazebo      (np.array)      : where is the gripper in the world frame? #id xyzrpy
             * cubes_pose        (np.array)      : where are the cubes? #id xyzrpy
             * destination_pose (np.array) : where to move the cubes? xyzrpy
         """
@@ -719,7 +763,7 @@ class server_state():
             "ur_j_pos": ur_utils.UR5ROBOTIQ().ur_joint_dict(),
             "ur_j_vel": ur_utils.UR5ROBOTIQ().ur_joint_dict(),
             "collision": np.zeros(1, dtype=np.float32),
-            "gripper_pose": np.zeros(6, dtype=np.float32), #xyzrpy
+            "gripper_pose_gazebo": np.zeros(6, dtype=np.float32), #xyzrpy
             "cubes_pose": None, #id xyzrpy
             "destination_pose": None #id xyzrpy
         }
@@ -796,17 +840,17 @@ class server_state():
         """
         self.state["collision"]=np.array(new_collision_state)
     
-    def update_gripper_pose(self, new_gripper_pose):
+    def update_gripper_pose_gazebo(self, new_gripper_pose_gazebo):
         """
         Updates the gripper pose array
         
         Args:
-            new_gripper_pose (array like): new gripper pose info #x y z r p y
+            new_gripper_pose_gazebo (array like): new gripper pose info #x y z r p y
 
         Returns:
             none
         """
-        self.state["gripper_pose"]=np.array(new_gripper_pose)
+        self.state["gripper_pose_gazebo"]=np.array(new_gripper_pose_gazebo)
 
     def update_cubes_pose(self, new_cubes_pose):
         """
@@ -862,13 +906,13 @@ class server_state():
         b= a + len(self.state["ur_j_pos"].joints)
         c= b + len(self.state["ur_j_vel"].joints)
         d= c + len(self.state["collision"])
-        e= d + len(self.state["gripper_pose"])
+        e= d + len(self.state["gripper_pose_gazebo"])
 
         #copies info in the appropriate format
         self.update_ur_joint_pos(      ur_utils.UR5ROBOTIQ().ur_joint_dict().set_values_ros_order(msg[ a:b ]) )
         self.update_ur_joint_vel(      ur_utils.UR5ROBOTIQ().ur_joint_dict().set_values_ros_order(msg[ b:c ] ))
         self.update_collision(         msg[ c:d ] )
-        self.update_gripper_pose(      msg[ d:e ] )
+        self.update_gripper_pose_gazebo(      msg[ d:e ] )
         self.update_cubes_pose(        msg[ e:  ] )
         self.update_destination_pose(destination_pose)
         
@@ -888,7 +932,7 @@ class server_state():
         ##update
         new_env_state.update_ur_j_pos(self.state["ur_j_pos"])
         new_env_state.update_ur_j_vel(self.state["ur_j_vel"])
-        new_env_state.update_gripper_pose(self.state["gripper_pose"])
+        new_env_state.update_gripper_pose_gazebo(self.state["gripper_pose_gazebo"])
         #consider all cubes
         new_env_state.update_cubes_pose(self.state["cubes_pose"], self.number_of_cubes)
         new_env_state.update_destination_pose(self.state["destination_pose"])
@@ -931,7 +975,7 @@ class GraspObjectUR5Sim(GraspObjectUR5, Simulation):
 
 
     cmd = "roslaunch ur_robot_server ur5Robotiq_sim_robot_server.launch \
-        max_velocity_scale_factor:=0.6 \
+        max_velocity_scale_factor:=0.8 \
         action_cycle_rate:=20 \
         world_name:=cubes.world \
         rviz_gui:=false \
