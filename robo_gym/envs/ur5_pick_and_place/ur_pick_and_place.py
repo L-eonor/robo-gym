@@ -161,13 +161,6 @@ class UR5RobotiqEnv(gym.GoalEnv):
         obs, reward, done, info = self.step( action ) 
         self.elapsed_steps = 0
 
-        '''
-        isto pode sair porque nao há colisoes
-        '''
-        if done and info['final_status'] == 'collision':
-            print(obs)
-            raise InvalidStateError('Reset started in a collision state')
-
         return obs
 
     def step(self, action):
@@ -347,8 +340,6 @@ class UR5RobotiqEnv(gym.GoalEnv):
         min_n_obj_pos=np.array(min_1_obj_pos*number_of_objs)
 
         # Definition of environment observation_space
-        #max_observation = np.concatenate(( max_joint_positions[0:1], max_joint_velocities[0:1], max_gripper_pose, max_gripper_to_obj_pose, max_n_obj_pos))
-        #min_observation = np.concatenate(( min_joint_positions[0:1], min_joint_velocities[0:1], min_gripper_pose, min_gripper_to_obj_pose, min_n_obj_pos))
         max_observation = np.concatenate(( max_gripper_pose, max_n_obj_pos))
         min_observation = np.concatenate(( min_gripper_pose, min_n_obj_pos))
 
@@ -645,96 +636,6 @@ class env_state():
             index +=1
 
         return limit_points
-
-class action_state():
-    """
-    Encapsulates an action
-    Includes: 
-        joints -> dict structure
-            * ur_j_pos_norm     (ur_joint_dict) : joint positions in angles (with zeros)
-        values -> np arrays, by standard order. Divides arm joints from finger joints to make gripper vs arm controller easier
-            * arm_joints (np.array), joints in std order
-            * finger_joints (np.array), joints in std order
-    """
-    
-    def __init__(self):
-        """
-        Populates the structure with:
-            joints -> dict structure
-                * ur_j_pos_norm     (ur_joint_dict) : joint positions in angles (with zeros)
-            values -> np arrays, by standard order. Divides arm joints from finger joints to make gripper vs arm controller easier
-                * arm_joints (np.array), joints in std order
-                * finger_joints (np.array), joints in std order
-        """
-
-        self.joints={
-            "ur_j_pos_norm": ur_utils.UR5ROBOTIQ().ur_joint_dict()
-        }
-        self.values={
-            "arm_joints"    : np.array( self.joints["ur_j_pos_norm"].get_arm_joints_value() ),
-            "finger_joints" : np.array( self.joints["ur_j_pos_norm"].get_finger_joints_value() )
-        }
-        self.finger_threshold = 0.01 #open: x<0.01, close:x>=0.01
-
-    def update_action(self, new_action_std_order):
-        """
-        Updates the action joints (joint angles), based on array passed in standard order (base to end effector)
-        finger action either 0-open, 1-close
-        
-        Args:
-            new_action_std_order (np array): array in std order indicating joint values
-
-        Returns:
-            self (So that: new_action=action_state().update_action(env_state) )
-        """
-
-        #updates joint dictionary
-        self.joints["ur_j_pos_norm"].set_values_std_order(new_action_std_order)
-
-        #finger action either 0-open, 1-close
-        for key in self.joints["ur_j_pos_norm"].finger_joints:
-            self.joints["ur_j_pos_norm"].joints[key] = int(0) if self.joints["ur_j_pos_norm"].joints[key] < self.finger_threshold else int(1)
-
-        #updates arm and finger arrays
-        self.values ["arm_joints"]    = np.array( self.joints["ur_j_pos_norm"].get_arm_joints_value() )       #std order
-        self.values ["finger_joints"] =      int( self.joints["ur_j_pos_norm"].get_finger_joints_value() [0]) #std order
-
-
-        return self
-
-    def action_as_box(self):
-        """
-        Updates the action joints (joint angles), based on array passed in standard order (base to end effector)
-        finger action either 0-open, 1-close
-        
-        Args:
-            new_action_std_order (np array): array in std order indicating joint values
-
-        Returns:
-        """
-        arm_joints=copy.deepcopy(self.values ["arm_joints"])
-        finger_joint = copy.deepcopy(self.values ["finger_joints"])
-
-        #converts from box (required to run baselines) to driver encoding 0-> open , 1->close
-        finger_joint= float(-1) if finger_joint < self.finger_threshold else int(1)
-
-        return arm_joints.tolist() + [finger_joint]
-        
-    def to_array(self):
-        """
-        Retrieves the action as a list. The order is: (ur_j_pos_norm  )
-        The ur_j_pos_norm  are displayed in standard order (from base to end effector)
-        
-        Args:
-            None
-
-        Returns:
-            action_array (list): ordered list containing the current action description. The array includes the following: ur_j_pos_norm (std order)
-        """
-
-        action_array= self.values["arm_joints"].tolist() + self.values["finger_joints"].tolist()
-
-        return action_array
 
 class server_state():
     """
