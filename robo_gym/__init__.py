@@ -69,7 +69,11 @@ register(
     entry_point='robo_gym.envs:ReachObjectUR5Sim',
     max_episode_steps=500
 )
-
+register(
+    id='PickAndPlaceUR5Sim-v0',
+    entry_point='robo_gym.envs:PickAndPlaceUR5Sim',
+    max_episode_steps=1000
+)
 
 
 ## UR10 Environments
