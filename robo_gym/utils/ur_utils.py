@@ -277,15 +277,15 @@ class UR5ROBOTIQ():
         # joint positions, standard order
         # Indexes go from shoulder pan joint to end effector
         if (robotiq==85): #if robotiq 85, finger joint lims are 0 and 0.8
-            #max_joint_pos=   np.array([6.28,6.28,6.28,6.28,6.28,6.28, 0.8])
-            #min_joint_pos= - np.array([6.28,6.28,6.28,6.28,6.28,6.28, 0])
-            max_joint_pos=  np.array([ np.pi, -2*np.pi/5,  2.7,      0,  np.pi,  np.pi, 0.8])
-            min_joint_pos=  np.array([-np.pi, -3*np.pi/5, -2.7, -np.pi, -np.pi, -np.pi, 0])
+            max_joint_pos=   np.array([6.28,6.28,6.28,6.28,6.28,6.28, 0.8])
+            min_joint_pos= - np.array([6.28,6.28,6.28,6.28,6.28,6.28, 0])
+            #max_joint_pos=  np.array([ np.pi, -2*np.pi/5,  2.7,      0,  np.pi,  np.pi, 0.8])
+            #min_joint_pos=  np.array([-np.pi, -3*np.pi/5, -2.7, -np.pi, -np.pi, -np.pi, 0])
         elif (robotiq==140): #if robotiq 140, finger joint lims are 0 and 0.7
-            #max_joint_pos =   np.array([6.28,6.28,6.28,6.28,6.28,6.28, 0.7])
-            #min_joint_pos = - np.array([6.28,6.28,6.28,6.28,6.28,6.28, 0])
-            max_joint_pos=  np.array([ np.pi, -2*np.pi/5,  2.7,      0,  np.pi,  np.pi, 0.7])
-            min_joint_pos=  np.array([-np.pi, -3*np.pi/5, -2.7, -np.pi, -np.pi, -np.pi, 0])
+            max_joint_pos =   np.array([6.28,6.28,6.28,6.28,6.28,6.28, 0.7])
+            min_joint_pos = - np.array([6.28,6.28,6.28,6.28,6.28,6.28, 0])
+            #max_joint_pos=  np.array([ np.pi, -2*np.pi/5,  2.7,      0,  np.pi,  np.pi, 0.7])
+            #min_joint_pos=  np.array([-np.pi, -3*np.pi/5, -2.7, -np.pi, -np.pi, -np.pi, 0])
 
         else:
             raise InvalidStateError('Invalid gripper')
@@ -581,15 +581,16 @@ class kinematics_model():
             self.a=np.array([0 ,-0.425 ,-0.39225 ,0 ,0 ,0], dtype=np.float32)
 
             #given by the urdf, ofsets configured
-            #0], dtype=np.float32)#
-            #-np.pi/2
             self.theta_offsets=np.array([np.pi, 0, 0, 0, 0, 0], dtype=np.float32)
             self.alpha_offsets=np.array([0, 0, 0, 0, 0, 0], dtype=np.float32)
             self.alpha=self.alpha-self.alpha_offsets
 
             #the robots origin: where is it placed? It is 0.1m above the ground from the urdf files
             self.origin=np.array([0, 0, 0.1], dtype=np.float32)
-            #self.wrist_offset=np.array([np.pi/2, np.pi/2, -np.pi])
+            
+            #arm diameter, to find if the joint 2 (index1) is above the ground
+            #https://www.igus.eu/info/robotics-ur-rings
+            self.arm_A_radius=0.086/2
 
         elif (ur_model=='ur10'):
             self.d=np.array([0.1273, 0, 0, 0.163941, 0.1157, 0.0922 + gripper_offset], dtype=np.float32)
@@ -601,7 +602,10 @@ class kinematics_model():
             self.alpha=-self.alpha-self.alpha_offsets
 
             self.origin=np.array([0, 0, 0], dtype=np.float32)
-            #self.wrist_offset=np.array([0, 0, 0])
+            
+            #arm diameter, to find if the joint 2 (index1)  is above the ground
+            #https://www.igus.eu/info/robotics-ur-rings
+            self.arm_A_radius=0.108/2
 
         else:
             print("error: Invalid ur model")
@@ -909,8 +913,6 @@ class kinematics_model():
         #orientation=np.array([[0, 0, 1], [1, 0, 0], [0, 1, 0]])
 
         possible_joints=self.inverse_kin(pose=pose, orientation=orientation)
-        #print("possible_joints")
-        #print(possible_joints)
 
         #there are any possible combinations?
         if len(possible_joints)==0:
@@ -932,8 +934,8 @@ class kinematics_model():
                 frame_center_with_correction=frame_center + self.origin
                 frame_center_z_coord=frame_center_with_correction[-1]
 
-                #if joint is below ground, delete possibility
-                if(frame_center_z_coord<0):
+                #if joint is below ground or joint 2 (index1) is colliding with the ground, delete possibility
+                if(frame_center_z_coord<0 and joint_index!=1) or (frame_center_z_coord<self.arm_A_radius and joint_index==1):
                     break
                 #all all joints from the combination are valid, append to valid joints
                 if(joint_index==len(joints_without_offset)-1):
@@ -941,7 +943,7 @@ class kinematics_model():
                         valid_joints=np.reshape(joint_combination, (1, len(joint_combination)))
                     else:
                         valid_joints=np.vstack((valid_joints, joint_combination))
-                        
+            
         #there are any valid combinations?
         if len(valid_joints)==0:
             return None
@@ -952,6 +954,8 @@ class kinematics_model():
         total_difference_per_combination=np.sum(joint_difference, axis=1)
         #picks up the most similar combination
         chosen_combination=valid_joints[np.argmin(total_difference_per_combination), :]
+
+        return chosen_combination
     
     def normaliza_pi(self, x):
         normalized=copy.deepcopy(x)
