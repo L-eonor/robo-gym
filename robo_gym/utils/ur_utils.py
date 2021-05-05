@@ -909,8 +909,8 @@ class kinematics_model():
         Returns
             chosen_combination(1*6)-> possible and valid combination of joints. Returns None if it is impossible
         """
-        #make sure the orientation is valid by computing the cross produxt of x by y and comparing against z
-        assert (np.cross(orientation[:, 0], orientation[:, 1])==orientation[:, 2]).all()
+        ##make sure the orientation is valid by computing the cross produxt of x by y and comparing against z
+        #assert (np.cross(orientation[:, 0], orientation[:, 1])==orientation[:, 2]).all()
 
         possible_joints=self.inverse_kin(pose=pose, orientation=orientation)
 
