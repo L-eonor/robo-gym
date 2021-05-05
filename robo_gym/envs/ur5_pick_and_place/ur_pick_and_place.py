@@ -45,7 +45,7 @@ class UR5RobotiqEnv(gym.GoalEnv):
         self.number_of_arm_joints    = self.ur_joint_dict().get_number_of_arm_joints()
         self.number_of_finger_joints = self.ur_joint_dict().get_number_of_finger_joints()
         #tol, max, min
-        self.distance_threshold = 0.1
+        self.distance_threshold = 0.01
         #self.abs_joint_pos_range = self.ur5.get_max_joint_positions()
         self.min_joint_pos = np.array(self.ur5.get_min_joint_positions().get_values_std_order())
         self.max_joint_pos = np.array(self.ur5.get_max_joint_positions().get_values_std_order())
@@ -185,7 +185,12 @@ class UR5RobotiqEnv(gym.GoalEnv):
 
         info, done = self._update_info_and_done(achieved_goal=achieved_goal, desired_goal=desired_goal)
 
-        reward = self.compute_reward(achieved_goal=achieved_goal, desired_goal=desired_goal, info=info)            
+        reward = self.compute_reward(achieved_goal=achieved_goal, desired_goal=desired_goal, info=info)     
+
+        print("reward")
+        #print(reward)      
+        print("gripper")
+        print(self.state.state["gripper_pose"][0:3])
 
         return obs, reward, done, info
 
@@ -261,6 +266,38 @@ class UR5RobotiqEnv(gym.GoalEnv):
         pose[0:3]=np.array([x_coordinate, y_coordinate, z_coordinate], dtype='float32')
         return pose
     
+    def get_product_pose(self):
+        singularity_area = True
+
+        # check if generated x,y,z are in singularityarea
+        while singularity_area:
+            # Generate random uniform sample in semisphere taking advantage of the
+            # sampling rule
+
+            # UR5 workspace radius
+            # Max d = 1.892
+            #R =  0.900 # reduced slightly
+            R =  0.850
+            
+            phi = np.random.uniform(low= 0, high= np.pi/2)
+            #u = np.random.default_rng().uniform(low= 0.0, high= 1.0)
+            u = np.random.uniform(low= 0.0, high= 1.0)
+
+            r = R * np.cbrt(u)
+
+            x = r * np.cos(phi)
+            y = r * np.sin(phi)
+            z = 0
+
+            if (x**2 + y**2) > 0.085**2:
+                singularity_area = False
+        #random position
+        pose[:3]=[x, y, z]
+        #random roll-> quaternion-> set object
+        random_roll=np.random.random()*np.pi
+
+        return pose, random_roll
+
     #reward/done/info
     def _update_info_and_done(self, desired_goal, achieved_goal):
         info = {
@@ -306,6 +343,7 @@ class UR5RobotiqEnv(gym.GoalEnv):
 
         """
         number_of_joints=1
+        '''
         # Joint position range tolerance
         pos_tolerance = np.full(number_of_joints,self.distance_threshold)
         # Joint positions range used to determine if there is an error in the sensor readings (normalized joints between -1, 1)
@@ -317,7 +355,7 @@ class UR5RobotiqEnv(gym.GoalEnv):
         # Joint velocities range used to determine if there is an error in the sensor readings
         max_joint_velocities = np.add(self.ur5.get_max_joint_velocities().get_values_std_order()[0:number_of_joints], vel_tolerance)
         min_joint_velocities = np.subtract(self.ur5.get_min_joint_velocities().get_values_std_order()[0:number_of_joints], vel_tolerance)
-
+        '''
         #gripper pose
         #increase a little bit
         # * arm length=0.85m is the arm + gripper attatcher + finger offset + arm above the ground
@@ -334,21 +372,24 @@ class UR5RobotiqEnv(gym.GoalEnv):
         min_gripper_to_obj_pose=[ 2*-abs_max_gripper_pose, 2*-abs_max_gripper_pose, 2*-abs_max_gripper_pose]#, -abs_max_angle, -abs_max_angle, -abs_max_angle]
 
         #cubes xyzrpy (width, depth, height) max min
-        max_1_obj_pos=[ abs_max_gripper_pose,  abs_max_gripper_pose, np.inf,  abs_max_angle,  abs_max_angle,  abs_max_angle, np.inf, np.inf, np.inf]
-        min_1_obj_pos=[-abs_max_gripper_pose, -abs_max_gripper_pose,      0, -abs_max_angle, -abs_max_angle, -abs_max_angle,      0,      0,      0]
+        #max_1_obj_pos=[ abs_max_gripper_pose,  abs_max_gripper_pose, np.inf,  abs_max_angle,  abs_max_angle,  abs_max_angle, np.inf, np.inf, np.inf]
+        #min_1_obj_pos=[-abs_max_gripper_pose, -abs_max_gripper_pose,      0, -abs_max_angle, -abs_max_angle, -abs_max_angle,      0,      0,      0]
+        #cubes xyz, roll, height
+        max_1_obj_pos=[ abs_max_gripper_pose,  abs_max_gripper_pose, np.inf,  abs_max_angle, np.inf]
+        min_1_obj_pos=[-abs_max_gripper_pose, -abs_max_gripper_pose,      0, -abs_max_angle,      0]
         max_n_obj_pos=np.array(max_1_obj_pos*number_of_objs)
         min_n_obj_pos=np.array(min_1_obj_pos*number_of_objs)
 
         # Definition of environment observation_space
-        max_observation = np.concatenate(( max_gripper_pose, max_n_obj_pos))
-        min_observation = np.concatenate(( min_gripper_pose, min_n_obj_pos))
+        max_observation = np.concatenate(( max_gripper_pose, max_gripper_to_obj_pose, max_n_obj_pos))
+        min_observation = np.concatenate(( min_gripper_pose, min_gripper_to_obj_pose, min_n_obj_pos))
 
         number_of_goals=1
-        max_achieved_goal = np.full(number_of_goals, 1.0)#np.array(max_gripper_pose)
-        min_achieved_goal = np.full(number_of_goals, 0.0)#np.array(min_gripper_pose)
+        max_achieved_goal = np.array(max_gripper_pose)
+        min_achieved_goal = np.array(min_gripper_pose)
 
-        max_desired_goal = np.full(number_of_goals, 1.0)#np.array(max_gripper_pose)
-        min_desired_goal = np.full(number_of_goals, 0.0)#np.array(min_gripper_pose)
+        max_desired_goal = np.array(max_gripper_pose)
+        min_desired_goal = np.array(min_gripper_pose)
 
 
         self.observation_space = spaces.Dict(dict(
@@ -543,6 +584,13 @@ class env_state():
 
         return self.state["destination_pose"][0:3] - self.state["gripper_pose_gazebo"][0:3]
 
+    def _get_object_to_target(self):
+        """
+        Returns the object position in relation to gripper
+        """
+
+        return self.state["destination_pose"][0:3] - self.state["cubes_pose"][0, 1:4]
+
     def to_array(self):
         """
         Retrieves the current state as a list. The order is: ( ur_j_pos + ur_j_vel + gripper_pose_gazebo + gripper_to_obj_dist + cubes_pose + destination_pose)
@@ -574,12 +622,14 @@ class env_state():
             observation  = np.concatenate([self.state["ur_j_pos_norm"].get_values_std_order()[0:1], self.state["ur_j_vel"].get_values_std_order()[0:1], self.state["gripper_pose_gazebo"][0:3], gripper_to_obj_pose, self.state["cubes_pose"][:, 1:].reshape(-1)]).reshape(-1)
         )
         '''
+        cube_to_destination=self._get_object_to_target()
         obs=dict(
             #where to put the gripper? in the cube to reach
-            desired_goal = [0] ,
+            desired_goal = self.state["destination_pose"][0:3].reshape(-1) ,
             #where the gripper really is
-            achieved_goal= [0] ,
-            observation  = np.concatenate([self.state["gripper_pose"], self.state["cubes_pose"][:, 1:].reshape(-1)]).reshape(-1)
+            achieved_goal= self.state["cubes_pose"][0, 1:4].reshape(-1) ,
+            #observation  = np.concatenate([self.state["gripper_pose"], self.state["cubes_pose"][:, 1:].reshape(-1)]).reshape(-1)
+            observation  = np.concatenate([self.state["gripper_pose"], cube_to_destination, self.state["cubes_pose"][0, 1:4].reshape(-1), self.state["cubes_pose"][0, 6].reshape(-1), self.state["cubes_pose"][0, 9].reshape(-1)]).reshape(-1) #só um cubo
         )
 
         return obs
@@ -878,10 +928,9 @@ class PickAndPlaceUR5Sim(PickAndPlaceUR5, Simulation):
     cmd = "roslaunch ur_robot_server ur5Robotiq_sim_robot_server.launch \
         max_velocity_scale_factor:=0.8 \
         action_cycle_rate:=20 \
-        world_name:=cubes.world \
+        world_name:=one_cube.world \
         rviz_gui:=false \
         gazebo_gui:=true"
     def __init__(self, ip=None, lower_bound_port=None, upper_bound_port=None, gui=False, **kwargs):
-        
         Simulation.__init__(self, self.cmd, ip, lower_bound_port, upper_bound_port, gui, **kwargs)
         PickAndPlaceUR5.__init__(self, rs_address=self.robot_server_ip, max_episode_steps=1000, robotiq=85, **kwargs)
