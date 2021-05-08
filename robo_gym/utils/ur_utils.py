@@ -832,8 +832,8 @@ class kinematics_model():
                 impossible_combinations.insert(0, hypothesis_index+1)
             else:
                 theta3 = np.arccos ((np.linalg.norm(P_13)**2 - self.a[1]**2 - self.a[2]**2 )/(2 * self.a[1] * self.a[2]))
-            self.joints_ik[hypothesis_index  , 2] =  theta3
-            self.joints_ik[hypothesis_index+1, 2] = -theta3
+            self.joints_ik[hypothesis_index  , 2] = -theta3
+            self.joints_ik[hypothesis_index+1, 2] =  theta3
 
         #deletes impossible hypotesis
         possible_joints=copy.deepcopy(self.joints_ik)
@@ -935,7 +935,7 @@ class kinematics_model():
                 frame_center_z_coord=frame_center_with_correction[-1]
 
                 #if joint is below ground or joint 2 (index1) is colliding with the ground, delete possibility
-                if(frame_center_z_coord<0 and joint_index!=1) or (frame_center_z_coord<self.arm_A_radius and joint_index==1):
+                if(frame_center_z_coord<0 and joint_index!=1) or (frame_center_z_coord<(4*self.arm_A_radius/3) and joint_index==1):
                     break
                 #all all joints from the combination are valid, append to valid joints
                 if(joint_index==len(joints_without_offset)-1):
