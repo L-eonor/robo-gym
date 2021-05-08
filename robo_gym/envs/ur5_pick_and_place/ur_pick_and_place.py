@@ -14,7 +14,7 @@ import robo_gym_server_modules.robot_server.client as rs_client
 from robo_gym.envs.simulation_wrapper import Simulation
 from robo_gym_server_modules.robot_server.grpc_msgs.python import robot_server_pb2
 
-class UR5RobotiqEnv(gym.GoalEnv):
+class UR5RobotiqEnv(gym.Env):
     """Universal Robots UR5 base environment.
 
     Args:
@@ -114,7 +114,11 @@ class UR5RobotiqEnv(gym.GoalEnv):
             ur5_initial_joint_positions = self.last_position_on_success
         else:
             ur5_initial_joint_positions = self._get_initial_joint_positions()
-        ur5_initial_joint_positions=[0,   0.04411338, -0.45421788,  1.9809008,   1.5707959,   1.5641292, 0 ]
+        ur5_initial_joint_positions=[0, -1.225197, 1.1146594, -1.4602588, -1.5707965, -1.5853374, 0 ]
+        #[[-0.01454115 -0.16047758 -1.1146594  -0.2956594  -1.5707965  -1.5853374 ]
+        #[-0.01454115 -1.225197    1.1146594  -1.4602588  -1.5707965  -1.5853374 ]
+        #[-2.812218   -1.9163957  -1.1146594  -1.6813339   1.5707964  -1.2414215 ]
+        #[-2.812218   -2.981115    1.1146594  -2.8459332   1.5707964  -1.2414215 ]]
         #new_pose, new_ee_orientation=self.kinematics.forward_kin(ur5_initial_joint_positions[0:6])
 
         # update initial joint positions
@@ -180,24 +184,23 @@ class UR5RobotiqEnv(gym.GoalEnv):
             print(obs)
             raise InvalidStateError()
 
-        achieved_goal = np.array(obs['achieved_goal'])#, ndmin=2)
-        desired_goal  = np.array(obs['desired_goal'] )#, ndmin=2)
+        achieved_goal = np.array(self.state.state["cubes_pose"][0, 1:4].reshape(-1) )#, ndmin=2)state["destination_pose"][0:3].reshape(-1)
+        desired_goal  = np.array(self.state.state["destination_pose"][0:3].reshape(-1) )#, ndmin=2)
 
         info, done = self._update_info_and_done(achieved_goal=achieved_goal, desired_goal=desired_goal)
 
-        reward = self.compute_reward(achieved_goal=achieved_goal, desired_goal=desired_goal, info=info)     
-
-        print("reward")
-        #print(reward)      
-        print("gripper")
-        print(self.state.state["gripper_pose"][0:3])
-
+        if joints_absolute is not None:
+            reward = self.compute_reward(achieved_goal=achieved_goal, desired_goal=desired_goal, info=info)     
+        else:
+            reward = -100.0
+        #return obs['observation'], reward, done, info['destination_pose']
         return obs, reward, done, info
 
     def render():
         pass
     
     def _reward(self, rs_state, action):
+        print("WRONG FUNCTION")
         return 0, False, {}
 
     def _send_action(self, action, gripper=0):
@@ -214,18 +217,21 @@ class UR5RobotiqEnv(gym.GoalEnv):
         #current robot joints
         current_joints=self.state.state["ur_j_pos"].get_arm_joints_value()
         desired_joints_std_order=self.kinematics.get_joint_combination(pose=object_pose, orientation=ee_orientation, current_joints=current_joints)
-        desired_joints_std_order_with_gripper=np.concatenate((desired_joints_std_order, [gripper]))        
+        if desired_joints_std_order is not None:
+            desired_joints_std_order_with_gripper=np.concatenate((desired_joints_std_order, [gripper]))        
 
-        #create object to deal with joint order
-        new_action_dict=self.ur_joint_dict().set_values_std_order(values=desired_joints_std_order_with_gripper)
+            #create object to deal with joint order
+            new_action_dict=self.ur_joint_dict().set_values_std_order(values=desired_joints_std_order_with_gripper)
 
-        # Send action to Robot Server
-        if not self.client.send_action(new_action_dict.get_values_ros_order().tolist()):
-            raise RobotServerError("send_action")  
+            # Send action to Robot Server
+            if not self.client.send_action(new_action_dict.get_values_ros_order().tolist()):
+                raise RobotServerError("send_action")  
 
-        self.state, _ = self._get_current_state()
+            self.state, _ = self._get_current_state()
 
-        return desired_joints_std_order
+            return desired_joints_std_order
+        else:
+            return None
 
     #initialization routines
 
@@ -397,6 +403,8 @@ class UR5RobotiqEnv(gym.GoalEnv):
             achieved_goal=spaces.Box(low=min_achieved_goal, high=max_achieved_goal, dtype='float32'),
             observation  =spaces.Box(low=min_observation,   high=max_observation,   dtype='float32'),
         ))
+        self.observation_space=spaces.Box(low=min_observation,   high=max_observation,   dtype='float32')
+
         return self.observation_space
     
     def _get_action_space(self):
@@ -508,7 +516,7 @@ class env_state():
         self.state["ur_j_pos"]=copy.deepcopy(ur_joint_state)
         #joints normalized values
         self.state["ur_j_pos_norm"]=ur_utils.UR5ROBOTIQ().normalize_ur_joint_dict(joint_dict=ur_joint_state)
-        #computes finger pose through inverse kinematics and stores it in the state dictionary
+        #computes finger pose through forward kinematics and stores it in the state dictionary
         pose, ee_orientation=self.kinematics.forward_kin(ur_joint_state.get_arm_joints_value())
         self.state["gripper_pose"]=np.array(pose)
 
@@ -631,7 +639,7 @@ class env_state():
             #observation  = np.concatenate([self.state["gripper_pose"], self.state["cubes_pose"][:, 1:].reshape(-1)]).reshape(-1)
             observation  = np.concatenate([self.state["gripper_pose"], cube_to_destination, self.state["cubes_pose"][0, 1:4].reshape(-1), self.state["cubes_pose"][0, 6].reshape(-1), self.state["cubes_pose"][0, 9].reshape(-1)]).reshape(-1) #só um cubo
         )
-
+        obs=np.concatenate([self.state["gripper_pose"], cube_to_destination, self.state["cubes_pose"][0, 1:4].reshape(-1), self.state["cubes_pose"][0, 6].reshape(-1), self.state["cubes_pose"][0, 9].reshape(-1)]).reshape(-1) #só um cubo
         return obs
 
     def get_obj_limits(self):
