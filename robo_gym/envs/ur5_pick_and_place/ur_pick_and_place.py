@@ -190,7 +190,10 @@ class UR5RobotiqEnv(gym.Env):
         info, done = self._update_info_and_done(achieved_goal=achieved_goal, desired_goal=desired_goal)
 
         if joints_absolute is not None:
-            reward = self.compute_reward(achieved_goal=achieved_goal, desired_goal=desired_goal, info=info)     
+            if done and info['final_status']=='success':
+                reward+=50.0
+            else:
+                reward = self.compute_reward(achieved_goal=achieved_goal, desired_goal=desired_goal, info=info) * 1.0    
         else:
             reward = -100.0
         #return obs['observation'], reward, done, info['destination_pose']
@@ -424,8 +427,8 @@ class UR5RobotiqEnv(gym.Env):
         angle_tolerance=0.001
         abs_max_angle=np.pi + angle_tolerance #+/-pi precision might fall off space limits
         #the gripper's orientation is fixed pointed down
-        max_gripper_pose=np.array([ abs_max_gripper_pose,  abs_max_gripper_pose,  abs_max_gripper_pose])#,  abs_max_angle,  abs_max_angle,  abs_max_angle]
-        min_gripper_pose=np.array([-abs_max_gripper_pose, -abs_max_gripper_pose, -abs_max_gripper_pose])#, -abs_max_angle, -abs_max_angle, -abs_max_angle]
+        max_gripper_pose=np.array([ abs_max_gripper_pose,  abs_max_gripper_pose,  0.08])#,  abs_max_angle,  abs_max_angle,  abs_max_angle]
+        min_gripper_pose=np.array([-abs_max_gripper_pose, -abs_max_gripper_pose, 0.02])#, -abs_max_angle, -abs_max_angle, -abs_max_angle]
 
         max_gripper_angle=[np.pi]
         min_gripper_angle=[0]
