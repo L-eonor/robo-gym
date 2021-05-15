@@ -266,18 +266,13 @@ class UR5RobotiqEnv(gym.GoalEnv):
     
     #reward/done/info
     def _update_info_and_done(self, desired_goal, achieved_goal):
+        euclidean_dist_3d      = np.absolute(self._distance_to_goal(desired_goal, achieved_goal))
+        done= euclidean_dist_3d<=self.distance_threshold
         info = {
-            'is_success': self._is_success(np.array(achieved_goal), np.array(desired_goal )),
-            'final_status': None,
+            'is_success': done,
+            'final_status': 'sucess' if done else 'Not final status',
             'destination_pose': self.destination_pose,
         }
-        done=False
-
-        euclidean_dist_3d      = self._distance_to_goal(np.array(desired_goal ), np.array(achieved_goal))
-
-        if euclidean_dist_3d.all() <= self.distance_threshold:
-            done = True
-            info['final_status']='success'
             
         if self.elapsed_steps >= self.max_episode_steps:
             done = True
@@ -874,6 +869,6 @@ class ReachObjectUR5Sim(ReachObjectUR5, Simulation):
         rviz_gui:=false \
         gazebo_gui:=true"
     def __init__(self, ip=None, lower_bound_port=None, upper_bound_port=None, gui=False, **kwargs):
-        #ip='127.0.0.1'
+        ip='127.0.0.1'
         Simulation.__init__(self, self.cmd, ip, lower_bound_port, upper_bound_port, gui, **kwargs)
         ReachObjectUR5.__init__(self, rs_address=self.robot_server_ip, max_episode_steps=500, robotiq=85, **kwargs)
