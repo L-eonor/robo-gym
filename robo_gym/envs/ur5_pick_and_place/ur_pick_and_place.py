@@ -45,12 +45,14 @@ class UR5RobotiqEnv(gym.Env):
         self.number_of_arm_joints    = self.ur_joint_dict().get_number_of_arm_joints()
         self.number_of_finger_joints = self.ur_joint_dict().get_number_of_finger_joints()
         #tol, max, min
-        self.distance_threshold = 0.01
-        #self.abs_joint_pos_range = self.ur5.get_max_joint_positions()
         self.min_joint_pos = np.array(self.ur5.get_min_joint_positions().get_values_std_order())
         self.max_joint_pos = np.array(self.ur5.get_max_joint_positions().get_values_std_order())
         self.initial_joint_positions_low = self.ur_joint_dict()
         self.initial_joint_positions_high = self.ur_joint_dict()
+
+        self.distance_threshold = 0.02 #distance to cube, to be considered well positioned
+        self.finger_threshold = 0.1 #open: x<0.01, close:x>=0.01
+        #self.grasp_threshold=0.03  #distance required between the gripper and the object to perform grasping
 
         #simulation params
         self.max_episode_steps = max_episode_steps
@@ -77,7 +79,7 @@ class UR5RobotiqEnv(gym.Env):
         self.action_space = self._get_action_space()
 
         #kinematics:
-        self.kinematics=ur_utils.kinematics_model(ur_model='ur5', gripper_offset=0.15)
+        self.kinematics=ur_utils.kinematics_model(ur_model='ur5')
           
     def seed(self, seed=None):
         self.np_random, seed = seeding.np_random(seed)
@@ -113,12 +115,7 @@ class UR5RobotiqEnv(gym.Env):
         elif (len(self.last_position_on_success) != 0) and (type=='continue'):
             ur5_initial_joint_positions = self.last_position_on_success
         else:
-            ur5_initial_joint_positions = self._get_initial_joint_positions()
-        ur5_initial_joint_positions=[0, -1.225197, 1.1146594, -1.4602588, -1.5707965, -1.5853374, 0 ]
-        #[[-0.01454115 -0.16047758 -1.1146594  -0.2956594  -1.5707965  -1.5853374 ]
-        #[-0.01454115 -1.225197    1.1146594  -1.4602588  -1.5707965  -1.5853374 ]
-        #[-2.812218   -1.9163957  -1.1146594  -1.6813339   1.5707964  -1.2414215 ]
-        #[-2.812218   -2.981115    1.1146594  -2.8459332   1.5707964  -1.2414215 ]]
+            ur5_initial_joint_positions = self._get_initial_joint_positions()        
         #new_pose, new_ee_orientation=self.kinematics.forward_kin(ur5_initial_joint_positions[0:6])
 
         # update initial joint positions
@@ -142,7 +139,7 @@ class UR5RobotiqEnv(gym.Env):
         '''
         # Set destination pose
         if destination_pose:
-            assert len(destination_pose) == 6
+            assert len(destination_pose) == 3
         else:
             destination_pose = self._get_destination_pose()
         self.destination_pose = destination_pose
@@ -160,7 +157,8 @@ class UR5RobotiqEnv(gym.Env):
                     raise InvalidStateError('Reset joint positions are not within defined range')
 
         # go one empty action and check if there is a collision
-        action = np.concatenate((self.state.state["gripper_pose"], [0], [0]))
+        #action = np.concatenate((self.state.state["gripper_pose"], [0], [0]))
+        action = np.concatenate((self.state.state["gripper_pose"], [0]))
         
         obs, reward, done, info = self.step( action ) 
         self.elapsed_steps = 0
@@ -190,10 +188,10 @@ class UR5RobotiqEnv(gym.Env):
         info, done = self._update_info_and_done(achieved_goal=achieved_goal, desired_goal=desired_goal)
 
         if joints_absolute is not None:
-            if done and info['final_status']=='success':
-                reward+=50.0
-            else:
-                reward = self.compute_reward(achieved_goal=achieved_goal, desired_goal=desired_goal, info=info) * 1.0    
+            #if done and info['final_status']=='success':
+            #    reward=50.0
+            #else:
+            reward = self.compute_reward(achieved_goal=achieved_goal, desired_goal=desired_goal, info=info) * 1.0    
         else:
             reward = -100.0
         #return obs['observation'], reward, done, info['destination_pose']
@@ -208,13 +206,24 @@ class UR5RobotiqEnv(gym.Env):
 
     def _send_action(self, action, gripper=0):
         
-        #from cartesian space to joint space, fixed orientation
         #pose
         object_pose=action[0:3]
-        gripper_orientation=action[3]
-        self.finger_threshold = 0.01 #open: x<0.01, close:x>=0.01
-        gripper=int(0) if action[4] < self.finger_threshold else int(1)
+        gripper_dest_orientation=0#action[3]
+        gripper_state=action[3]#action[4]
 
+        #if no cube grasped, required to be perpendicular to the closest cube
+        #if gripper is near obj, mantain the orientation perpendicular to obj
+        if not self._is_grasping():
+            gripper_orientation=self._get_grasp_orientation()
+        #if grasping, orientation is 0 or pi/2
+        else:
+            #gripper_orientation=float(0) if action[3] <np.pi/4 else float (np.pi/2)
+            gripper_orientation=gripper_dest_orientation
+
+        gripper=int(0) if gripper_state < self.finger_threshold else int(1)
+
+
+        #inverse kinematics
         #ee orientation
         ee_orientation=np.array([[np.cos(gripper_orientation), np.sin(gripper_orientation), 0], [np.sin(gripper_orientation), -np.cos(gripper_orientation), 0], [0, 0, -1]])
         #current robot joints
@@ -245,8 +254,6 @@ class UR5RobotiqEnv(gym.Env):
 
         IMPORTANT: gripper should start fully open (max=min=0)
         '''
-        #self.initial_joint_positions_low = np.array([-0.65, -2.75, 1.0, -3.14, -1.7, -3.14, 0.0])
-        #self.initial_joint_positions_high = np.array([0.65, -2.0, 2.5, 3.14, -1.0, 3.14, 0.85])
         self.initial_joint_positions_low  = np.array(self.ur5.get_min_joint_positions().get_values_std_order())
         self.initial_joint_positions_high = np.array(self.ur5.get_max_joint_positions().get_values_std_order())
 
@@ -259,68 +266,26 @@ class UR5RobotiqEnv(gym.Env):
         """
         self._set_initial_joint_positions_range()
         # Random initial joint positions
-        joint_positions = np.random.default_rng().uniform(low=self.initial_joint_positions_low, high=self.initial_joint_positions_high)
-        #joint_positions = np.array([-9.36364591e-01, -6.76085472e-01,  9.92242396e-01, -3.15184891e-02, -9.91933823e-01, -9.96397674e-01,  1.00009084e+00], dtype='float32')
+        #joint_positions = np.random.default_rng().uniform(low=self.initial_joint_positions_low, high=self.initial_joint_positions_high)
+        joint_positions=[0, -1.225197, 1.1146594, -1.4602588, -1.5707965, -1.5853374, 0 ]
         return joint_positions
 
     def _get_destination_pose(self):
-        pose=np.zeros(6)
+        cube_height=self.state.state["cubes_pose"][0, 9]
+        #force destination pose to be in [0.5, 0.5, height/2]
+        pose=[0.5, 0.5, cube_height/2]
 
-        #force destination pose to be in the gripper circle
-        target_angle = np.random.default_rng().uniform(low=-np.pi, high=np.pi)
-        radius=np.linalg.norm(self.state.state["gripper_pose_gazebo"][0:2])
-        x_coordinate=np.cos(target_angle)*radius
-        y_coordinate=np.sin(target_angle)*radius
-        z_coordinate=copy.deepcopy(self.state.state["gripper_pose_gazebo"][2])
-        pose[0:3]=np.array([x_coordinate, y_coordinate, z_coordinate], dtype='float32')
         return pose
     
-    def get_product_pose(self):
-        singularity_area = True
-
-        # check if generated x,y,z are in singularityarea
-        while singularity_area:
-            # Generate random uniform sample in semisphere taking advantage of the
-            # sampling rule
-
-            # UR5 workspace radius
-            # Max d = 1.892
-            #R =  0.900 # reduced slightly
-            R =  0.850
-            
-            phi = np.random.uniform(low= 0, high= np.pi/2)
-            #u = np.random.default_rng().uniform(low= 0.0, high= 1.0)
-            u = np.random.uniform(low= 0.0, high= 1.0)
-
-            r = R * np.cbrt(u)
-
-            x = r * np.cos(phi)
-            y = r * np.sin(phi)
-            z = 0
-
-            if (x**2 + y**2) > 0.085**2:
-                singularity_area = False
-        #random position
-        pose[:3]=[x, y, z]
-        #random roll-> quaternion-> set object
-        random_roll=np.random.random()*np.pi
-
-        return pose, random_roll
-
     #reward/done/info
     def _update_info_and_done(self, desired_goal, achieved_goal):
+        euclidean_dist_3d      = np.absolute(self._distance_to_goal(desired_goal, achieved_goal))
+        done= euclidean_dist_3d<=self.distance_threshold
         info = {
-            'is_success': self._is_success(np.array(achieved_goal), np.array(desired_goal )),
-            'final_status': None,
+            'is_success': done,
+            'final_status': 'sucess' if done else 'Not final status',
             'destination_pose': self.destination_pose,
         }
-        done=False
-
-        euclidean_dist_3d      = self._distance_to_goal(np.array(desired_goal ), np.array(achieved_goal))
-
-        if euclidean_dist_3d.all() <= self.distance_threshold:
-            done = True
-            info['final_status']='success'
             
         if self.elapsed_steps >= self.max_episode_steps:
             done = True
@@ -328,21 +293,7 @@ class UR5RobotiqEnv(gym.Env):
         
         return info, done
 
-    def _is_success(self, achieved_goal, desired_goal):
-        if isinstance(achieved_goal, list):
-            achieved_goal = np.array(achieved_goal, dtype='float32')
-
-        if isinstance(desired_goal, list):
-            desired_goal = np.array(desired_goal, dtype='float32')
-        
-        assert achieved_goal.shape == desired_goal.shape
-        
-        d = np.linalg.norm(achieved_goal - desired_goal, axis=-1)
-
-        return (d < self.distance_threshold).astype(np.float32)
-
     #Observation and action spaces
-
     def _get_observation_space_with_cubes(self, number_of_objs):
         """Get environment observation space, considering the cubes positioning
         ( ur_j_pos + ur_j_vel + gripper_pose_gazebo + gripper_to_obj_dist + cubes_pose + destination_pose)
@@ -351,7 +302,6 @@ class UR5RobotiqEnv(gym.Env):
             gym.spaces: Gym observation space object.
 
         """
-        number_of_joints=1
         '''
         # Joint position range tolerance
         pos_tolerance = np.full(number_of_joints,self.distance_threshold)
@@ -374,18 +324,18 @@ class UR5RobotiqEnv(gym.Env):
         angle_tolerance=0.001
         abs_max_angle=np.pi + angle_tolerance #+/-pi precision might fall off space limits
         max_gripper_pose=[ abs_max_gripper_pose,  abs_max_gripper_pose,  abs_max_gripper_pose ]#,  abs_max_angle,  abs_max_angle,  abs_max_angle]
-        min_gripper_pose=[-abs_max_gripper_pose, -abs_max_gripper_pose, -abs_max_gripper_pose ]#, -abs_max_angle, -abs_max_angle, -abs_max_angle]
+        min_gripper_pose=[-0.1, -abs_max_gripper_pose, -abs_max_gripper_pose ]#, -abs_max_angle, -abs_max_angle, -abs_max_angle]
 
         #gripper_to_obj_dist
         max_gripper_to_obj_pose=[ 2* abs_max_gripper_pose, 2* abs_max_gripper_pose, 2* abs_max_gripper_pose]#,  abs_max_angle,  abs_max_angle,  abs_max_angle]
-        min_gripper_to_obj_pose=[ 2*-abs_max_gripper_pose, 2*-abs_max_gripper_pose, 2*-abs_max_gripper_pose]#, -abs_max_angle, -abs_max_angle, -abs_max_angle]
+        min_gripper_to_obj_pose=[ 1*-abs_max_gripper_pose, 2*-abs_max_gripper_pose, 2*-abs_max_gripper_pose]#, -abs_max_angle, -abs_max_angle, -abs_max_angle]
 
         #cubes xyzrpy (width, depth, height) max min
         #max_1_obj_pos=[ abs_max_gripper_pose,  abs_max_gripper_pose, np.inf,  abs_max_angle,  abs_max_angle,  abs_max_angle, np.inf, np.inf, np.inf]
         #min_1_obj_pos=[-abs_max_gripper_pose, -abs_max_gripper_pose,      0, -abs_max_angle, -abs_max_angle, -abs_max_angle,      0,      0,      0]
         #cubes xyz, roll, height
         max_1_obj_pos=[ abs_max_gripper_pose,  abs_max_gripper_pose, np.inf,  abs_max_angle, np.inf]
-        min_1_obj_pos=[-abs_max_gripper_pose, -abs_max_gripper_pose,      0, -abs_max_angle,      0]
+        min_1_obj_pos=[0, -abs_max_gripper_pose,      0, -abs_max_angle,      -0.1]#0]
         max_n_obj_pos=np.array(max_1_obj_pos*number_of_objs)
         min_n_obj_pos=np.array(min_1_obj_pos*number_of_objs)
 
@@ -427,17 +377,21 @@ class UR5RobotiqEnv(gym.Env):
         angle_tolerance=0.001
         abs_max_angle=np.pi + angle_tolerance #+/-pi precision might fall off space limits
         #the gripper's orientation is fixed pointed down
-        max_gripper_pose=np.array([ abs_max_gripper_pose,  abs_max_gripper_pose,  0.08])#,  abs_max_angle,  abs_max_angle,  abs_max_angle]
-        min_gripper_pose=np.array([-abs_max_gripper_pose, -abs_max_gripper_pose, 0.02])#, -abs_max_angle, -abs_max_angle, -abs_max_angle]
+        #max_gripper_pose=np.array([ abs_max_gripper_pose,  abs_max_gripper_pose,  0.08])#,  abs_max_angle,  abs_max_angle,  abs_max_angle]
+        #min_gripper_pose=np.array([-abs_max_gripper_pose, -abs_max_gripper_pose, 0.02])#, -abs_max_angle, -abs_max_angle, -abs_max_angle]
+        max_gripper_pose=np.array([ 0.60,  0.55, 0.08])#,  abs_max_angle,  abs_max_angle,  abs_max_angle]
+        min_gripper_pose=np.array([ 0.20 , -0.55, 0.01])#, -abs_max_angle, -abs_max_angle, -abs_max_angle]
 
-        max_gripper_angle=[np.pi]
+        max_gripper_angle=[np.pi/2]
         min_gripper_angle=[0]
 
         max_gripper_state=[1]
         min_gripper_state=[0]
 
-        action_max=np.concatenate(( max_gripper_pose, max_gripper_angle, max_gripper_state))
-        action_min=np.concatenate(( min_gripper_pose, min_gripper_angle, min_gripper_state))
+        #action_max=np.concatenate(( max_gripper_pose, max_gripper_angle, max_gripper_state))
+        #action_min=np.concatenate(( min_gripper_pose, min_gripper_angle, min_gripper_state))
+        action_max=np.concatenate(( max_gripper_pose, max_gripper_state))
+        action_min=np.concatenate(( min_gripper_pose, min_gripper_state))
 
         self.action_space = spaces.Box(low=action_min, high=action_max, dtype=np.float32)
 
@@ -464,6 +418,50 @@ class UR5RobotiqEnv(gym.Env):
         new_state = rs_state.server_state_to_env_state(robotiq=self.robotiq)
 
         return new_state, rs_state
+
+    #grasp functions
+    def _is_grasping(self):
+        #open: x<0.01, close:x>=0.01
+        is_gripper_closed=False if self.state.state["ur_j_pos_norm"].get_finger_joints_value() < -0.5 else True
+        is_gripper_near_obj=self._gripper_is_near_obj()
+        is_grasping=is_gripper_near_obj and is_gripper_closed
+
+        return is_grasping
+
+    def _gripper_is_near_obj(self):
+        #gripper_pose =self.state.state['gripper_pose_gazebo'][0:3]
+        gripper_pose =self.state.state['gripper_pose']
+        
+        closest_object=self._get_closest_obj()
+        obj_pose = closest_object[1:4]
+        self.grasp_threshold=closest_object[9] + 0.05 #threshold distance between the cube and the gripper must be the >= as the height
+        gripper_to_obj=np.linalg.norm(gripper_pose - obj_pose, axis=-1)
+
+        return (gripper_to_obj <= self.grasp_threshold)
+
+    def _get_closest_obj(self):
+
+        closest_object_index=np.argmin(np.linalg.norm(self.state.state["cubes_pose"][:, 1:4]-self.state.state["gripper_pose"], axis=1), axis=0)
+        closest_object=self.state.state["cubes_pose"][closest_object_index, :]
+
+        return closest_object
+
+    def _get_grasp_orientation(self):
+        closest_object=self._get_closest_obj()
+        obj_orientation=closest_object[6]
+
+        #restricts object orientation to interval 0-pi, which is the meaningful range to define gripper pose
+        while obj_orientation>np.pi:
+            obj_orientation-=np.pi
+        while obj_orientation<0:
+            obj_orientation+=np.pi
+        #gripper perpendicular to obj
+        if obj_orientation<np.pi/2:
+            grasp_orientation=obj_orientation+np.pi/2
+        else:
+            grasp_orientation=obj_orientation-np.pi/2
+                   
+        return grasp_orientation
 
 class env_state():
     """
@@ -502,7 +500,8 @@ class env_state():
             "collision":[]
         }
 
-        self.kinematics=ur_utils.kinematics_model(ur_model='ur5', gripper_offset=0.15)
+        self.kinematics=ur_utils.kinematics_model(ur_model='ur5')
+    
     
     def update_ur_j_pos(self, ur_joint_state):
         """
@@ -618,8 +617,6 @@ class env_state():
 
         #env_array= self.state["ur_j_pos"].get_values_std_order().tolist() + self.state["ur_j_vel"].get_values_std_order().tolist() + self.state["gripper_pose_gazebo"].tolist() + gripper_to_obj_pose.tolist() + self.state["cubes_pose"][:, 1:].reshape(-1).tolist() + self.state["destination_pose"].tolist()
         env_array= self.state["ur_j_pos"].get_values_std_order().tolist() + self.state["ur_j_vel"].get_values_std_order().tolist() + self.state["gripper_pose_gazebo"].tolist() + gripper_to_obj_pose.tolist() + self.state["cubes_pose"][:, 1:].reshape(-1).tolist() + self.state["destination_pose"].tolist()
-        print("env array")
-        print(env_array)
         return env_array
 
     def get_obs(self):
@@ -640,10 +637,10 @@ class env_state():
             #where the gripper really is
             achieved_goal= self.state["cubes_pose"][0, 1:4].reshape(-1) ,
             #observation  = np.concatenate([self.state["gripper_pose"], self.state["cubes_pose"][:, 1:].reshape(-1)]).reshape(-1)
+            #gripper pose (1*3); cube to destination(1*3); cubes_pose(1*3); orientation; height
             observation  = np.concatenate([self.state["gripper_pose"], cube_to_destination, self.state["cubes_pose"][0, 1:4].reshape(-1), self.state["cubes_pose"][0, 6].reshape(-1), self.state["cubes_pose"][0, 9].reshape(-1)]).reshape(-1) #só um cubo
         )
-        obs=np.concatenate([self.state["gripper_pose"], cube_to_destination, self.state["cubes_pose"][0, 1:4].reshape(-1), self.state["cubes_pose"][0, 6].reshape(-1), self.state["cubes_pose"][0, 9].reshape(-1)]).reshape(-1) #só um cubo
-        return obs
+        return obs["observation"]
 
     def get_obj_limits(self):
         """
@@ -716,9 +713,9 @@ class server_state():
             * ur_j_pos          (ur_joint_dict) : joint positions in angles (with zeros)
             * ur_j_vel          (ur_joint_dict) : joint velocities (with zeros)
             * collision         (np.array)      : collision array
-            * gripper_pose_gazebo      (np.array)      : where is the gripper in the world frame? #id xyzrpy
+            * gripper_pose_gazebo  (np.array)   : where is the gripper in the world frame? #id xyzrpy
             * cubes_pose        (np.array)      : where are the cubes? #id xyzrpy
-            * destination_pose (np.array) : where to move the cubes? xyzrpy
+            * destination_pose  (np.array)      : where to move the cubes? xyzrpy
         """
         
         self.state={
@@ -770,11 +767,14 @@ class server_state():
             none
         """
         joints=new_joint_pos.get_values_std_order()
+        '''
         for i in range(len(joints)):
             while joints[i] > np.pi:
                 joints[i]-=np.pi
             while joints[i] < -np.pi:
                 joints[i]+=np.pi
+        '''
+        
         self.state["ur_j_pos"]=new_joint_pos.set_values_std_order(joints)
 
     def update_ur_joint_vel(self, new_joint_vel):
