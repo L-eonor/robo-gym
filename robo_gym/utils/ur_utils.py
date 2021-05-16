@@ -565,7 +565,7 @@ class kinematics_model():
     """
     Deals with the ur kinematics
     """
-    def __init__(self, ur_model='ur5', gripper_offset=0.15):
+    def __init__(self, ur_model='ur5', gripper_offset=0.13):
 
         #DH params
         #https://www.universal-robots.com/articles/ur/application-installation/dh-parameters-for-calculations-of-kinematics-and-dynamics/
@@ -714,8 +714,6 @@ class kinematics_model():
 
         joints_without_offset=joint_variables-self.theta_offsets
         T_matrix=self.get_transformation_matrix(joint_variables=joints_without_offset, start_joint=0, end_joint=self.number_of_joints-1)
-        #print("pose_before")
-        #print(T_matrix[0:3, -1])
         pose=np.array(T_matrix[0:3, -1]) + self.origin
         ee_orientation=np.array(T_matrix[0:3, 0:3]) 
 
@@ -955,7 +953,8 @@ class kinematics_model():
         #picks up the most similar combination
         chosen_combination=valid_joints[np.argmin(total_difference_per_combination), :]
 
-        return chosen_combination
+        chosen_combination[-1]=self.normaliza_0_pi(chosen_combination[-1])
+        return self.normaliza_pi(chosen_combination)
     
     def normaliza_pi(self, x):
         normalized=copy.deepcopy(x)
@@ -968,3 +967,11 @@ class kinematics_model():
                 while x[i]<-np.pi:
                     x[i]+=np.pi
         return np.reshape(x, normalized.shape )
+
+    def normaliza_0_pi(self, x):
+        while x>np.pi:
+            x-=np.pi
+    
+        while x<0:
+            x+=np.pi
+        return x
