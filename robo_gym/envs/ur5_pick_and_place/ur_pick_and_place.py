@@ -334,8 +334,8 @@ class UR5RobotiqEnv(gym.Env):
         #max_1_obj_pos=[ abs_max_gripper_pose,  abs_max_gripper_pose, np.inf,  abs_max_angle,  abs_max_angle,  abs_max_angle, np.inf, np.inf, np.inf]
         #min_1_obj_pos=[-abs_max_gripper_pose, -abs_max_gripper_pose,      0, -abs_max_angle, -abs_max_angle, -abs_max_angle,      0,      0,      0]
         #cubes xyz, roll, height
-        max_1_obj_pos=[ abs_max_gripper_pose,  abs_max_gripper_pose, np.inf,  abs_max_angle, np.inf]
-        min_1_obj_pos=[0, -abs_max_gripper_pose,      0, -abs_max_angle,      -0.1]#0]
+        max_1_obj_pos=[ abs_max_gripper_pose,  abs_max_gripper_pose, np.inf]#,  abs_max_angle, np.inf]
+        min_1_obj_pos=[0, -abs_max_gripper_pose,      0]#, -abs_max_angle,      -0.1]#0]
         max_n_obj_pos=np.array(max_1_obj_pos*number_of_objs)
         min_n_obj_pos=np.array(min_1_obj_pos*number_of_objs)
 
@@ -638,7 +638,10 @@ class env_state():
             achieved_goal= self.state["cubes_pose"][0, 1:4].reshape(-1) ,
             #observation  = np.concatenate([self.state["gripper_pose"], self.state["cubes_pose"][:, 1:].reshape(-1)]).reshape(-1)
             #gripper pose (1*3); cube to destination(1*3); cubes_pose(1*3); orientation; height
-            observation  = np.concatenate([self.state["gripper_pose"], cube_to_destination, self.state["cubes_pose"][0, 1:4].reshape(-1), self.state["cubes_pose"][0, 6].reshape(-1), self.state["cubes_pose"][0, 9].reshape(-1)]).reshape(-1) #só um cubo
+            #observation  = np.concatenate([self.state["gripper_pose"], cube_to_destination, self.state["cubes_pose"][0, 1:4].reshape(-1), self.state["cubes_pose"][0, 6].reshape(-1), self.state["cubes_pose"][0, 9].reshape(-1)]).reshape(-1) #só um cubo
+            #gripper pose (1*3); cube to destination(1*3); cubes_pose(1*3)
+            observation  = np.concatenate([self.state["gripper_pose"], cube_to_destination, self.state["cubes_pose"][0, 1:4].reshape(-1)]).reshape(-1) #só um cubo
+        
         )
         return obs["observation"]
 
