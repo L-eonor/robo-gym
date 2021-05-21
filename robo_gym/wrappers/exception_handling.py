@@ -41,7 +41,7 @@ class ExceptionHandling(gym.Wrapper):
                 print('Invalid state error. Restarting Robot Server and reseting world...')
 
                 observation=self.env.reset()
-                reward=-9999.0
+                reward=-999.0
                 done=True
                 info={"Exception":True, "ExceptionType": e}
 
@@ -74,7 +74,7 @@ class ExceptionHandling(gym.Wrapper):
                 self.env.restart_sim()
                 
                 observation=self.env.observation_space.sample()
-                reward=0.0
+                reward=-999.0
                 done=True
                 info={"Exception":True, "ExceptionType": e}
 
