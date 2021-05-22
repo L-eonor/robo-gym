@@ -116,7 +116,7 @@ class UR5RobotiqEnv(gym.Env):
             ur5_initial_joint_positions = self.last_position_on_success
         else:
             ur5_initial_joint_positions = self._get_initial_joint_positions()        
-        #new_pose, new_ee_orientation=self.kinematics.forward_kin(ur5_initial_joint_positions[0:6])
+        reset_pose, new_ee_orientation=self.kinematics.forward_kin(ur5_initial_joint_positions[0:6])
 
         # update initial joint positions
         rs_state = server_state()
@@ -133,6 +133,10 @@ class UR5RobotiqEnv(gym.Env):
 
         #Get current state, update obs space with cubes and validate
         self.state, rs_state =self._get_current_state()
+
+        #verifies if the gripper was correctly reseted
+        if np.absolute(np.linalg.norm(self.state.state["gripper_pose"] - reset_pose, axis=-1)) > 0.1:
+            raise RobotServerError
         
         '''
         Isto tem de ser mudado para o goal 
