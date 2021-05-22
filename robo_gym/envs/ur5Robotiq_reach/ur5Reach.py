@@ -136,7 +136,7 @@ class UR5RobotiqEnv(gym.Env):
 
         #verifies if the gripper was correctly reseted
         if np.absolute(np.linalg.norm(self.state.state["gripper_pose"] - reset_pose, axis=-1)) > 0.1:
-            raise RobotServerError
+            raise RobotServerError("reset")
         
         '''
         Isto tem de ser mudado para o goal 
