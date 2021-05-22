@@ -37,7 +37,7 @@ class ExceptionHandling(gym.Wrapper):
                 f.close()
             return observation, reward, done, info
         except (RpcError, InvalidStateError, RobotServerError) as e:
-            if InvalidStateError:# and not (RobotServerError):
+            if InvalidStateError and not (RobotServerError):
                 print('Invalid state error. Restarting Robot Server and reseting world...')
 
                 observation=self.env.reset()
@@ -73,9 +73,9 @@ class ExceptionHandling(gym.Wrapper):
                 print('Error occurred while calling the step function. Restarting Robot server ...')
                 self.env.restart_sim()
                 
-                observation=self.env.observation_space.sample()
+                #observation=self.env.observation_space.sample()
                 observation=self.env.reset()
-                reward=0
+                reward=-10.0
                 done=True
                 info={"Exception":True, "ExceptionType": e}
 
