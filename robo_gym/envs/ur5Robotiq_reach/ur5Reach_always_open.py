@@ -52,7 +52,7 @@ class UR5RobotiqEnv(gym.Env):
 
         self.distance_threshold = 0.02 #distance to cube, to be considered well positioned
         self.finger_threshold = 0.1 #open: x<0.01, close:x>=0.01
-        self.gripper_error_threshold=0.05
+        self.gripper_error_threshold=0.1
         #self.grasp_threshold=0.03  #distance required between the gripper and the object to perform grasping
 
         #simulation params
@@ -190,10 +190,10 @@ class UR5RobotiqEnv(gym.Env):
 
 
         #verifies if the gripper was correctly reseted
-        if np.absolute(np.linalg.norm(self.state.state["gripper_pose"] - self.state.state["gripper_pose_gazebo"][0:3], axis=-1)) > self.gripper_error_threshold:
-            print("gripper threshold")
-            print(np.absolute(np.linalg.norm(self.state.state["gripper_pose"] - self.state.state["gripper_pose_gazebo"][0:3], axis=-1)))
-            raise RobotServerError("gripper")
+        #if np.absolute(np.linalg.norm(self.state.state["gripper_pose"] - self.state.state["gripper_pose_gazebo"][0:3], axis=-1)) > self.gripper_error_threshold:
+        #    print("gripper threshold")
+        #    print(np.absolute(np.linalg.norm(self.state.state["gripper_pose"] - self.state.state["gripper_pose_gazebo"][0:3], axis=-1)))
+        #    raise RobotServerError("gripper")
 
         #achieved_goal = np.array(self.state.state["cubes_pose"][0, 1:4].reshape(-1) )
         #desired_goal  = np.array(self.state.state["destination_pose"][0:3].reshape(-1) )
