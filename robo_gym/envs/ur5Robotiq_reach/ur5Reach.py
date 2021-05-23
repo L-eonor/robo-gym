@@ -136,7 +136,7 @@ class UR5RobotiqEnv(gym.Env):
         self.state, rs_state =self._get_current_state()
 
         #verifies if the gripper was correctly reseted
-        if np.absolute(np.linalg.norm(self.state.state["gripper_pose_gazebo"] - reset_pose, axis=-1)) > self.gripper_error_threshold:
+        if np.absolute(np.linalg.norm(self.state.state["gripper_pose_gazebo"][0:3] - reset_pose, axis=-1)) > self.gripper_error_threshold:
             raise RobotServerError("gripper")
         
         '''
@@ -189,7 +189,7 @@ class UR5RobotiqEnv(gym.Env):
 
 
         #verifies if the gripper was correctly reseted
-        if np.absolute(np.linalg.norm(self.state.state["gripper_pose"] - self.state.state["gripper_pose_gazebo"], axis=-1)) > self.gripper_error_threshold:
+        if np.absolute(np.linalg.norm(self.state.state["gripper_pose"] - self.state.state["gripper_pose_gazebo"][0:3], axis=-1)) > self.gripper_error_threshold:
             raise RobotServerError("gripper")
 
         #achieved_goal = np.array(self.state.state["cubes_pose"][0, 1:4].reshape(-1) )
