@@ -52,6 +52,7 @@ class UR5RobotiqEnv(gym.Env):
 
         self.distance_threshold = 0.02 #distance to cube, to be considered well positioned
         self.finger_threshold = 0.1 #open: x<0.01, close:x>=0.01
+        self.gripper_error_threshold=0.05
         #self.grasp_threshold=0.03  #distance required between the gripper and the object to perform grasping
 
         #simulation params
@@ -109,10 +110,10 @@ class UR5RobotiqEnv(gym.Env):
         Isto tem de ser mudado para ser desired pose + gripper state (como na action)
         '''
         # Set initial robot joint positions, in standard order
-        if initial_joint_positions:
+        if False:#initial_joint_positions:
             assert len(initial_joint_positions) == self.ur5.number_of_joint_positions
             ur5_initial_joint_positions = initial_joint_positions
-        elif (len(self.last_position_on_success) != 0) and (type=='continue'):
+        elif False:#(len(self.last_position_on_success) != 0) and (type=='continue'):
             ur5_initial_joint_positions = self.last_position_on_success
         else:
             ur5_initial_joint_positions = self._get_initial_joint_positions()        
@@ -135,7 +136,7 @@ class UR5RobotiqEnv(gym.Env):
         self.state, rs_state =self._get_current_state()
 
         #verifies if the gripper was correctly reseted
-        if np.absolute(np.linalg.norm(self.state.state["gripper_pose_gazebo"] - reset_pose, axis=-1)) > 0.1:
+        if np.absolute(np.linalg.norm(self.state.state["gripper_pose_gazebo"] - reset_pose, axis=-1)) > self.gripper_error_threshold:
             raise RobotServerError("gripper")
         
         '''
@@ -188,7 +189,7 @@ class UR5RobotiqEnv(gym.Env):
 
 
         #verifies if the gripper was correctly reseted
-        if np.absolute(np.linalg.norm(self.state.state["gripper_pose"] - self.state.state["gripper_pose_gazebo"], axis=-1)) > 0.1:
+        if np.absolute(np.linalg.norm(self.state.state["gripper_pose"] - self.state.state["gripper_pose_gazebo"], axis=-1)) > self.gripper_error_threshold:
             raise RobotServerError("gripper")
 
         #achieved_goal = np.array(self.state.state["cubes_pose"][0, 1:4].reshape(-1) )
