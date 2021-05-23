@@ -12,8 +12,8 @@ class RobotServerError(Exception):
             self.message = "send_action service call failed."
         elif service == "get_state":
             self.message = "get_state service call failed."
-        elif service == "reset":
-            self.message = "reset at the wrong pose"
+        elif service == "gripper":
+            self.message = "gripper at the wrong pose"
         else:
             self.message = "service call failed"
     def __str__(self):

@@ -135,8 +135,8 @@ class UR5RobotiqEnv(gym.Env):
         self.state, rs_state =self._get_current_state()
 
         #verifies if the gripper was correctly reseted
-        if np.absolute(np.linalg.norm(self.state.state["gripper_pose"] - reset_pose, axis=-1)) > 0.1:
-            raise RobotServerError("reset")
+        if np.absolute(np.linalg.norm(self.state.state["gripper_pose_gazebo"] - reset_pose, axis=-1)) > 0.1:
+            raise RobotServerError("gripper")
         
         '''
         Isto tem de ser mudado para o goal 
@@ -186,6 +186,11 @@ class UR5RobotiqEnv(gym.Env):
             print(obs)
             raise InvalidStateError()
 
+
+        #verifies if the gripper was correctly reseted
+        if np.absolute(np.linalg.norm(self.state.state["gripper_pose"] - self.state.state["gripper_pose_gazebo"], axis=-1)) > 0.1:
+            raise RobotServerError("gripper")
+
         #achieved_goal = np.array(self.state.state["cubes_pose"][0, 1:4].reshape(-1) )
         #desired_goal  = np.array(self.state.state["destination_pose"][0:3].reshape(-1) )
         desired_goal= np.array(self.state.state["cubes_pose"][0, 1:4].reshape(-1) )
@@ -194,9 +199,6 @@ class UR5RobotiqEnv(gym.Env):
         info, done = self._update_info_and_done(achieved_goal=achieved_goal, desired_goal=desired_goal)
 
         if joints_absolute is not None:
-            #if done and info['final_status']=='success':
-            #    reward=50.0
-            #else:
             reward = self.compute_reward(achieved_goal=achieved_goal, desired_goal=desired_goal, info=info) * 1.0    
         else:
             reward = -100.0
