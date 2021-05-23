@@ -163,7 +163,8 @@ class UR5RobotiqEnv(gym.Env):
 
         # go one empty action and check if there is a collision
         #action = np.concatenate((self.state.state["gripper_pose"], [0], [0]))
-        action = np.concatenate((self.state.state["gripper_pose"], [0]))
+        #action = np.concatenate((self.state.state["gripper_pose"], [0]))
+        action = self.state.state["gripper_pose"]
         
         obs, reward, done, info = self.step( action ) 
         self.elapsed_steps = 0
