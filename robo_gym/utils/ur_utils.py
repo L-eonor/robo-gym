@@ -2,6 +2,7 @@
 
 import numpy as np
 import copy
+from robo_gym.utils.exceptions import InvalidStateError, RobotServerError
 
 class UR5():
     """Universal Robots UR5 utilities.
@@ -425,7 +426,8 @@ class UR5ROBOTIQ():
 
             #validates array dimensions
             if len(values) != len(self.joints) :
-                raise RobotServerError("Invalid array dimensions")
+                print("Invalid array dimensions")
+                raise InvalidStateError
             
             #assigns correct joints
             for index in range(len(self.joints)):
@@ -448,7 +450,8 @@ class UR5ROBOTIQ():
 
             #validates array dimensions
             if len(values) != len(self.joints) :
-                raise RobotServerError("Invalid array dimensions")
+                print("Invalid array dimensions")
+                raise InvalidStateError
             
             #assigns correct joints
             for index in range(len(self.joints)):

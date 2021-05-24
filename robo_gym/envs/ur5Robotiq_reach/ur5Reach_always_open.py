@@ -392,7 +392,7 @@ class UR5RobotiqEnv(gym.Env):
         #max_gripper_pose=np.array([ abs_max_gripper_pose,  abs_max_gripper_pose,  0.08])#,  abs_max_angle,  abs_max_angle,  abs_max_angle]
         #min_gripper_pose=np.array([-abs_max_gripper_pose, -abs_max_gripper_pose, 0.02])#, -abs_max_angle, -abs_max_angle, -abs_max_angle]
         max_gripper_pose=np.array([ 0.60,   0.2, 0.50])#,  abs_max_angle,  abs_max_angle,  abs_max_angle]
-        min_gripper_pose=np.array([ 0.20 , -0.2, 0.03])#, -abs_max_angle, -abs_max_angle, -abs_max_angle]
+        min_gripper_pose=np.array([ 0.25 , -0.2, 0.03])#, -abs_max_angle, -abs_max_angle, -abs_max_angle]
 
         max_gripper_angle=[np.pi/2]
         min_gripper_angle=[0]
