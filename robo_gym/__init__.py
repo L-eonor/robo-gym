@@ -84,7 +84,7 @@ register(
 register(
     id='GripperReachOpenUR5Sim-v0',
     entry_point='robo_gym.envs:GripperReachOpenUR5Sim',
-    max_episode_steps=1000
+    max_episode_steps=500
 )
 
 

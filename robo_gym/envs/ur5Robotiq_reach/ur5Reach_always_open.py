@@ -32,7 +32,7 @@ class UR5RobotiqEnv(gym.Env):
     """
     real_robot = False
 
-    def __init__(self, rs_address=None, max_episode_steps=1000, robotiq=85, **kwargs):
+    def __init__(self, rs_address=None, max_episode_steps=500, robotiq=85, **kwargs):
 
         #auxiliar objects
         self.ur5 = ur_utils.UR5ROBOTIQ(robotiq)
@@ -391,7 +391,7 @@ class UR5RobotiqEnv(gym.Env):
         #the gripper's orientation is fixed pointed down
         #max_gripper_pose=np.array([ abs_max_gripper_pose,  abs_max_gripper_pose,  0.08])#,  abs_max_angle,  abs_max_angle,  abs_max_angle]
         #min_gripper_pose=np.array([-abs_max_gripper_pose, -abs_max_gripper_pose, 0.02])#, -abs_max_angle, -abs_max_angle, -abs_max_angle]
-        max_gripper_pose=np.array([ 0.60,   0.2, 0.50])#,  abs_max_angle,  abs_max_angle,  abs_max_angle]
+        max_gripper_pose=np.array([ 0.60,   0.2, 0.30])#,  abs_max_angle,  abs_max_angle,  abs_max_angle]
         min_gripper_pose=np.array([ 0.25 , -0.2, 0.03])#, -abs_max_angle, -abs_max_angle, -abs_max_angle]
 
         max_gripper_angle=[np.pi/2]
