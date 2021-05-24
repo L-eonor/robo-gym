@@ -288,7 +288,7 @@ class UR5ROBOTIQ():
             #min_joint_pos=  np.array([-np.pi, -3*np.pi/5, -2.7, -np.pi, -np.pi, -np.pi, 0])
 
         else:
-            raise InvalidStateError('Invalid gripper')
+            print('Invalid gripper')
         # updates objects
         self.ur_joint_max_pos = self.ur_joint_dict().set_values_std_order(max_joint_pos)
         self.ur_joint_min_pos = self.ur_joint_dict().set_values_std_order(min_joint_pos)
@@ -565,7 +565,7 @@ class kinematics_model():
     """
     Deals with the ur kinematics
     """
-    def __init__(self, ur_model='ur5', gripper_offset=0.13):
+    def __init__(self, ur_model='ur5', gripper_offset=0.14):
 
         #DH params
         #https://www.universal-robots.com/articles/ur/application-installation/dh-parameters-for-calculations-of-kinematics-and-dynamics/
