@@ -5,9 +5,10 @@ import json
 import numpy as np
 import time
 
-path_to_file="/home/leonor/logs/pick_and_place/reset_logs.txt"
-path_to_step_log="/home/leonor/logs/pick_and_place/step"
+path_to_file="/home/leonor/logs/log/reset_logs.txt"
+path_to_step_log="/home/leonor/logs/log/step"
 current_path_to_step_log=None
+reset_number=0
 
 
 class ExceptionHandling(gym.Wrapper):
@@ -73,8 +74,8 @@ class ExceptionHandling(gym.Wrapper):
                 print('Error occurred while calling the step function. Restarting Robot server ...')
                 self.env.restart_sim()
                 
-                #observation=self.env.observation_space.sample()
-                observation=self.env.reset()
+                observation=self.env.observation_space.sample()
+                #observation=self.env.reset()
                 reward=-10.0
                 done=True
                 info={"Exception":True, "ExceptionType": e}
@@ -103,11 +104,17 @@ class ExceptionHandling(gym.Wrapper):
 
     def reset(self, **kwargs):
         global current_path_to_step_log
+        global reset_number
         current_path_to_step_log=path_to_step_log+str(round(time.time() * 1000))+'.txt'
         
         for i in range(5):
             try:
-                return self.env.reset(**kwargs)
+                reset_number+=1
+                if reset_number==20:
+                    reset_number=0
+                    self.env.restart_sim()
+                else:
+                    return self.env.reset(**kwargs)
             except (RpcError, InvalidStateError, RobotServerError):
                 print('Error occurred while calling the reset function. Restarting Robot server ...')
                 self.env.restart_sim()

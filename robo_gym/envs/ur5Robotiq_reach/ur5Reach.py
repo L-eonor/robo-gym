@@ -32,7 +32,7 @@ class UR5RobotiqEnv(gym.Env):
     """
     real_robot = False
 
-    def __init__(self, rs_address=None, max_episode_steps=1000, robotiq=85, **kwargs):
+    def __init__(self, rs_address=None, max_episode_steps=500, robotiq=85, **kwargs):
 
         #auxiliar objects
         self.ur5 = ur_utils.UR5ROBOTIQ(robotiq)
@@ -136,9 +136,10 @@ class UR5RobotiqEnv(gym.Env):
         self.state, rs_state =self._get_current_state()
 
         #verifies if the gripper was correctly reseted
-        if np.absolute(np.linalg.norm(self.state.state["gripper_pose_gazebo"][0:3] - reset_pose, axis=-1)) > self.gripper_error_threshold:
+        sim_to_vision_error=np.absolute(np.linalg.norm(self.state.state["gripper_pose_gazebo"][0:3] - reset_pose, axis=-1))
+        if not ( sim_to_vision_error > 0.035 and sim_to_vision_error < 0.045):
+            print(sim_to_vision_error)
             raise RobotServerError("gripper")
-        
         '''
         Isto tem de ser mudado para o goal 
         '''
@@ -189,8 +190,10 @@ class UR5RobotiqEnv(gym.Env):
 
 
         #verifies if the gripper was correctly reseted
-        if np.absolute(np.linalg.norm(self.state.state["gripper_pose"] - self.state.state["gripper_pose_gazebo"][0:3], axis=-1)) > self.gripper_error_threshold:
-            raise RobotServerError("gripper")
+        #if np.absolute(np.linalg.norm(self.state.state["gripper_pose"] - self.state.state["gripper_pose_gazebo"][0:3], axis=-1)) > self.gripper_error_threshold:
+        #    print("gripper threshold")
+        #    print(np.absolute(np.linalg.norm(self.state.state["gripper_pose"] - self.state.state["gripper_pose_gazebo"][0:3], axis=-1)))
+        #    raise RobotServerError("gripper")
 
         #achieved_goal = np.array(self.state.state["cubes_pose"][0, 1:4].reshape(-1) )
         #desired_goal  = np.array(self.state.state["destination_pose"][0:3].reshape(-1) )
@@ -218,7 +221,7 @@ class UR5RobotiqEnv(gym.Env):
         #pose
         object_pose=action[0:3]
         gripper_dest_orientation=0#action[3]
-        gripper_state=action[3]#action[4]
+        gripper_state=0#action[3]#action[4]
 
         #if no cube grasped, required to be perpendicular to the closest cube
         #if gripper is near obj, mantain the orientation perpendicular to obj
@@ -276,7 +279,8 @@ class UR5RobotiqEnv(gym.Env):
         self._set_initial_joint_positions_range()
         # Random initial joint positions
         #joint_positions = np.random.default_rng().uniform(low=self.initial_joint_positions_low, high=self.initial_joint_positions_high)
-        joint_positions=[0, -1.225197, 1.1146594, -1.4602588, -1.5707965, -1.5853374, 0 ]
+        #joint_positions=[0, -1.225197, 1.1146594, -1.4602588, -1.5707965, -1.5853374, 0 ]
+        joint_positions=[0, -1.225197, 1.1146594, -1.4602588, -1.5707965, 1.5707965, 0 ]
         return joint_positions
 
     def _get_destination_pose(self):
@@ -332,7 +336,7 @@ class UR5RobotiqEnv(gym.Env):
         abs_max_gripper_pose=0.85+gripper_tolerance
         angle_tolerance=0.001
         abs_max_angle=np.pi + angle_tolerance #+/-pi precision might fall off space limits
-        max_gripper_pose=[ abs_max_gripper_pose,  abs_max_gripper_pose,  abs_max_gripper_pose ]#,  abs_max_angle,  abs_max_angle,  abs_max_angle]
+        max_gripper_pose=[ abs_max_gripper_pose,  abs_max_gripper_pose,  0.41 ]#,  abs_max_angle,  abs_max_angle,  abs_max_angle]
         min_gripper_pose=[-0.1, -abs_max_gripper_pose, -0.1 ]#, -abs_max_angle, -abs_max_angle, -abs_max_angle]
 
         #gripper_to_obj_dist
@@ -388,8 +392,10 @@ class UR5RobotiqEnv(gym.Env):
         #the gripper's orientation is fixed pointed down
         #max_gripper_pose=np.array([ abs_max_gripper_pose,  abs_max_gripper_pose,  0.08])#,  abs_max_angle,  abs_max_angle,  abs_max_angle]
         #min_gripper_pose=np.array([-abs_max_gripper_pose, -abs_max_gripper_pose, 0.02])#, -abs_max_angle, -abs_max_angle, -abs_max_angle]
-        max_gripper_pose=np.array([ 0.60,   0.2, 0.08])#,  abs_max_angle,  abs_max_angle,  abs_max_angle]
-        min_gripper_pose=np.array([ 0.20 , -0.2, 0.01])#, -abs_max_angle, -abs_max_angle, -abs_max_angle]
+        #max_gripper_pose=np.array([ 0.60, 0.2, 0.05])
+        #min_gripper_pose=np.array([ 0.25, 0.0, 0.03])
+        max_gripper_pose=np.array([ 0.5, 0.11, 0.05])
+        min_gripper_pose=np.array([ 0.3, 0.09, 0.03])
 
         max_gripper_angle=[np.pi/2]
         min_gripper_angle=[0]
