@@ -968,7 +968,7 @@ class GripperPickUR5(UR5RobotiqEnv):
             self.in_reach_range=True
         #dense reward
         else:
-            corrected_reward=np.array([reward], dtype='float32')
+            corrected_reward=np.array(reward, dtype='float32')
             
             #reset flags if gripper distanciates from the cube
             if self.in_reach_range and not np.absolute(reward)<=self.distance_threshold:
