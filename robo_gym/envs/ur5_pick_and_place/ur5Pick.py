@@ -53,6 +53,8 @@ class UR5RobotiqEnv(gym.Env):
         self.distance_threshold = 0.02 #distance to cube, to be considered well positioned
         self.finger_threshold = 0.1 #open: x<0.01, close:x>=0.01
         self.gripper_error_threshold=0.05
+        self.in_reach_range=False
+        self.in_pick_range=False
         #self.grasp_threshold=0.03  #distance required between the gripper and the object to perform grasping
 
         #simulation params
@@ -457,10 +459,9 @@ class UR5RobotiqEnv(gym.Env):
         
         closest_object=self._get_closest_obj()
         obj_pose = closest_object[1:4]
-        self.grasp_threshold=closest_object[9] + 0.05 #threshold distance between the cube and the gripper must be the >= as the height
         gripper_to_obj=np.linalg.norm(gripper_pose - obj_pose, axis=-1)
 
-        return (gripper_to_obj <= self.grasp_threshold)
+        return (gripper_to_obj <= self.distance_threshold)
 
     def _get_closest_obj(self):
 
@@ -956,17 +957,23 @@ class GripperPickUR5(UR5RobotiqEnv):
         reward = -1 * euclidean_dist_3d
         
         #corrected_reward=np.array([100.0 if np.absolute(r)<=self.distance_threshold else r for r in reward], dtype='float32')
-        for r in reward:
-            #reward for grasping
-            if np.absolute(r)<=self.distance_threshold and self._is_grasping():
-                corrected_reward=np.array([150.0], dtype='float32')
-            #reward for reaching position
-            elif np.absolute(r)<=self.distance_threshold and not self._is_grasping():
-                corrected_reward=np.array([100.0], dtype='float32')
-            else:
-                corrected_reward=np.array([r], dtype='float32')
-
-
+        #for r in reward:
+        #reward for grasping
+        if np.absolute(reward)<=self.distance_threshold and self._is_grasping() and (not self.in_pick_range) and self.in_reach_range:
+            corrected_reward=np.array([150.0], dtype='float32')
+            self.in_pick_range=True
+        #reward for reaching position
+        elif (np.absolute(reward)<=self.distance_threshold) and (not self._is_grasping()) and (not self.in_reach_range):
+            corrected_reward=np.array([100.0], dtype='float32')
+            self.in_reach_range=True
+        #dense reward
+        else:
+            corrected_reward=np.array([reward], dtype='float32')
+            
+            #reset flags if gripper distanciates from the cube
+            if self.in_reach_range and not np.absolute(reward)<=self.distance_threshold:
+                self.in_reach_range=False
+                self.in_pick_range=False
 
         if len(corrected_reward)==1:
             corrected_reward=corrected_reward[0]
