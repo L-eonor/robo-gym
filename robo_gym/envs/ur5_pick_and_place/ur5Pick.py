@@ -296,7 +296,7 @@ class UR5RobotiqEnv(gym.Env):
     def _update_info_and_done(self, desired_goal, achieved_goal):
         euclidean_dist_3d      = np.absolute(self._distance_to_goal(desired_goal, achieved_goal))
 
-        done=(euclidean_dist_3d<=self.distance_threshold) and self._is_grasping()
+        done=self._is_grasping()
         info = {
             'is_success': done,
             'final_status': 'sucess' if done else 'Not final status',
