@@ -205,7 +205,7 @@ class UR5RobotiqEnv(gym.Env):
         info, done = self._update_info_and_done(achieved_goal=achieved_goal, desired_goal=desired_goal)
 
         if joints_absolute is not None:
-            reward = self.compute_reward(achieved_goal=achieved_goal, desired_goal=desired_goal, info=info) * 1.0    
+            reward, done = self.compute_reward_and_done(achieved_goal=achieved_goal, desired_goal=desired_goal, info=info)  
         else:
             reward = -100.0
         #return obs['observation'], reward, done, info['destination_pose']
@@ -294,8 +294,6 @@ class UR5RobotiqEnv(gym.Env):
     
     #reward/done/info
     def _update_info_and_done(self, desired_goal, achieved_goal):
-        euclidean_dist_3d      = np.absolute(self._distance_to_goal(desired_goal, achieved_goal))
-
         done=self._is_grasping()
         info = {
             'is_success': done,
@@ -941,7 +939,7 @@ class GripperPickUR5(UR5RobotiqEnv):
 
         return np.linalg.norm(goal_a - goal_b, axis=-1)
 
-    def compute_reward(self, achieved_goal, desired_goal, info):
+    def compute_reward_and_done(self, achieved_goal, desired_goal, info):
         reward = 0
         done = False
         
@@ -959,26 +957,30 @@ class GripperPickUR5(UR5RobotiqEnv):
         #corrected_reward=np.array([100.0 if np.absolute(r)<=self.distance_threshold else r for r in reward], dtype='float32')
         #for r in reward:
         #reward for grasping
-        if np.absolute(reward)<=self.distance_threshold and self._is_grasping() and (not self.in_pick_range) and self.in_reach_range:
+        if np.absolute(reward)<=self.distance_threshold and self._is_grasping() and self.in_reach_range:# and (not self.in_pick_range) and self.in_reach_range:
             corrected_reward=np.array([150.0], dtype='float32')
+            print("Picking....")
             self.in_pick_range=True
+            done=True
         #reward for reaching position
         elif (np.absolute(reward)<=self.distance_threshold) and (not self._is_grasping()) and (not self.in_reach_range):
             corrected_reward=np.array([100.0], dtype='float32')
+            print("Reaching....")
             self.in_reach_range=True
         #dense reward
         else:
             corrected_reward=np.array(reward, dtype='float32')
             
             #reset flags if gripper distanciates from the cube
-            if self.in_reach_range and not np.absolute(reward)<=self.distance_threshold:
+            if self.in_reach_range and np.absolute(reward)>self.distance_threshold:
+                #print("afastou-se")
                 self.in_reach_range=False
                 self.in_pick_range=False
 
         if len(corrected_reward)==1:
             corrected_reward=corrected_reward[0]
 
-        return corrected_reward
+        return corrected_reward*1.0, done
 
 class GripperPickUR5Sim(GripperPickUR5, Simulation):
     #cmd = "roslaunch ur_robot_server ur5Robotiq_sim_robot_server.launch \
