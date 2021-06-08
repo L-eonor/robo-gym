@@ -170,6 +170,7 @@ class UR5RobotiqEnv(gym.Env):
         
         obs, reward, done, info = self.step( action ) 
         self.elapsed_steps = 0
+        self.has_reached=False
 
         return obs
 
@@ -963,10 +964,11 @@ class GripperPickUR5(UR5RobotiqEnv):
             self.in_pick_range=True
             done=True
         #reward for reaching position
-        elif (np.absolute(reward)<=self.distance_threshold) and (not self._is_grasping()) and (not self.in_reach_range):
+        elif (np.absolute(reward)<=self.distance_threshold) and (not self._is_grasping()) and (not self.in_reach_range) and (not self.has_reached):
             corrected_reward=np.array([100.0], dtype='float32')
             print("Reaching....")
             self.in_reach_range=True
+            self.has_reached=True
         #dense reward
         else:
             corrected_reward=np.array(reward, dtype='float32')
