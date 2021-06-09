@@ -958,7 +958,7 @@ class GripperPickUR5(UR5RobotiqEnv):
         #corrected_reward=np.array([100.0 if np.absolute(r)<=self.distance_threshold else r for r in reward], dtype='float32')
         #for r in reward:
         #reward for grasping
-        if np.absolute(reward)<=self.distance_threshold and self._is_grasping() and self.in_reach_range:# and (not self.in_pick_range) and self.in_reach_range:
+        if np.absolute(reward)<=self.distance_threshold and self._is_grasping():# and (not self.in_pick_range) and self.in_reach_range:
             corrected_reward=np.array([150.0], dtype='float32')
             print("Picking....")
             self.in_pick_range=True
