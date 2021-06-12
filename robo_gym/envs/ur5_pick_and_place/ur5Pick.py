@@ -53,8 +53,6 @@ class UR5RobotiqEnv(gym.Env):
         self.distance_threshold = 0.02 #distance to cube, to be considered well positioned
         self.finger_threshold = 0.1 #open: x<0.01, close:x>=0.01
         self.gripper_error_threshold=0.05
-        self.in_reach_range=False
-        self.in_pick_range=False
         #self.grasp_threshold=0.03  #distance required between the gripper and the object to perform grasping
 
         #simulation params
@@ -203,13 +201,16 @@ class UR5RobotiqEnv(gym.Env):
         desired_goal= np.array(self.state.state["cubes_pose"][0, 1:4].reshape(-1) )
         achieved_goal= self.state.state["gripper_pose"]
 
-        info, done = self._update_info_and_done(achieved_goal=achieved_goal, desired_goal=desired_goal)
-
         if joints_absolute is not None:
-            reward, done = self.compute_reward_and_done(achieved_goal=achieved_goal, desired_goal=desired_goal, info=info)  
+            reward, done, info = self.reward_done_info(achieved_goal=achieved_goal, desired_goal=desired_goal)  
         else:
             reward = -100.0
-        #return obs['observation'], reward, done, info['destination_pose']
+            done = True
+            info = {
+            'is_success': False,
+            'final_status': 'invalid pose',
+            }
+            
         return obs, reward, done, info
 
     def render():
@@ -293,21 +294,6 @@ class UR5RobotiqEnv(gym.Env):
 
         return pose
     
-    #reward/done/info
-    def _update_info_and_done(self, desired_goal, achieved_goal):
-        done=self._is_grasping()
-        info = {
-            'is_success': done,
-            'final_status': 'sucess' if done else 'Not final status',
-            'destination_pose': self.destination_pose,
-        }
-            
-        if self.elapsed_steps >= self.max_episode_steps:
-            done = True
-            info['final_status'] = 'max_steps_exceeded'
-        
-        return info, done
-
     #Observation and action spaces
     def _get_observation_space_with_cubes(self, number_of_objs):
         """Get environment observation space, considering the cubes positioning
@@ -940,9 +926,9 @@ class GripperPickUR5(UR5RobotiqEnv):
 
         return np.linalg.norm(goal_a - goal_b, axis=-1)
 
-    def compute_reward_and_done(self, achieved_goal, desired_goal, info):
+    def reward_done_info(self, achieved_goal, desired_goal):
         reward = 0
-        done = False
+        done=False
         
         # Calculate distance to the target
         #desired goal
@@ -950,39 +936,56 @@ class GripperPickUR5(UR5RobotiqEnv):
         #achieved goal
         cube_real_pose         = achieved_goal#np.array(achieved_goal)  #for now, requests the only cube's pose
         #euclidean norm
-        euclidean_dist_3d      = self._distance_to_goal(destination_pose, cube_real_pose).reshape(-1)
+        euclidean_dist_3d      = np.absolute(self._distance_to_goal(destination_pose, cube_real_pose)).reshape(-1)
 
         # Reward base
-        reward = -1 * euclidean_dist_3d
+        reward = -1.0 * euclidean_dist_3d
         
-        #corrected_reward=np.array([100.0 if np.absolute(r)<=self.distance_threshold else r for r in reward], dtype='float32')
-        #for r in reward:
         #reward for grasping
-        if np.absolute(reward)<=self.distance_threshold and self._is_grasping():# and (not self.in_pick_range) and self.in_reach_range:
-            corrected_reward=np.array([150.0], dtype='float32')
+        if self._is_grasping():
+            if not self.has_reached:
+                self.has_reached=True
+                corrected_reward=np.array([250.0], dtype='float32')
+                info = {
+                'is_success': True,
+                'final_status': 'Reaching+Picking',
+                }
+            else:
+                corrected_reward=np.array([150.0], dtype='float32')
+                info = {
+                'is_success': True,
+                'final_status': 'Picking',
+                }
             print("Picking....")
-            self.in_pick_range=True
             done=True
         #reward for reaching position
-        elif (np.absolute(reward)<=self.distance_threshold) and (not self._is_grasping()) and (not self.in_reach_range) and (not self.has_reached):
+        elif (np.absolute(reward)<=self.distance_threshold) and (not self._is_grasping()) and (not self.has_reached):
             corrected_reward=np.array([100.0], dtype='float32')
+            info = {
+            'is_success': False,
+            'final_status': 'Reaching',
+            }
             print("Reaching....")
-            self.in_reach_range=True
             self.has_reached=True
+        #max steps exceeded
+        elif self.elapsed_steps >= self.max_episode_steps:
+            done=True
+            info = {
+            'is_success': False,
+            'final_status': 'max_steps_exceeded',
+            }
         #dense reward
         else:
             corrected_reward=np.array(reward, dtype='float32')
-            
-            #reset flags if gripper distanciates from the cube
-            if self.in_reach_range and np.absolute(reward)>self.distance_threshold:
-                #print("afastou-se")
-                self.in_reach_range=False
-                self.in_pick_range=False
+            info = {
+            'is_success': False,
+            'final_status': 'running',
+            }
 
         if len(corrected_reward)==1:
             corrected_reward=corrected_reward[0]
 
-        return corrected_reward*1.0, done
+        return corrected_reward, done, info
 
 class GripperPickUR5Sim(GripperPickUR5, Simulation):
     #cmd = "roslaunch ur_robot_server ur5Robotiq_sim_robot_server.launch \
