@@ -954,7 +954,7 @@ class GripperReachGraspInfoUR5(UR5RobotiqEnv):
         elif self.elapsed_steps >= self.max_episode_steps:
             done=True
             info = {
-            'is_success': True,
+            'is_success': False,
             'final_status': 'max_steps_exceeded',
             }
 
