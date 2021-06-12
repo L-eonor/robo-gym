@@ -200,13 +200,16 @@ class UR5RobotiqEnv(gym.Env):
         desired_goal= np.array(self.state.state["cubes_pose"][0, 1:4].reshape(-1) )
         achieved_goal= self.state.state["gripper_pose"]
 
-        info, done = self._update_info_and_done(achieved_goal=achieved_goal, desired_goal=desired_goal)
-
         if joints_absolute is not None:
-            reward = self.compute_reward(achieved_goal=achieved_goal, desired_goal=desired_goal, info=info) * 1.0    
+            reward, done, info = self.reward_done_info(achieved_goal=achieved_goal, desired_goal=desired_goal)  
         else:
             reward = -100.0
-        #return obs['observation'], reward, done, info['destination_pose']
+            done = True
+            info = {
+            'is_success': False,
+            'final_status': 'invalid pose',
+            }
+            
         return obs, reward, done, info
 
     def render():
@@ -290,22 +293,6 @@ class UR5RobotiqEnv(gym.Env):
 
         return pose
     
-    #reward/done/info
-    def _update_info_and_done(self, desired_goal, achieved_goal):
-        euclidean_dist_3d      = np.absolute(self._distance_to_goal(desired_goal, achieved_goal))
-        done= euclidean_dist_3d<=self.distance_threshold
-        info = {
-            'is_success': done,
-            'final_status': 'sucess' if done else 'Not final status',
-            'destination_pose': self.destination_pose,
-        }
-            
-        if self.elapsed_steps >= self.max_episode_steps:
-            done = True
-            info['final_status'] = 'max_steps_exceeded'
-        
-        return info, done
-
     #Observation and action spaces
     def _get_observation_space_with_cubes(self, number_of_objs):
         """Get environment observation space, considering the cubes positioning
@@ -939,9 +926,8 @@ class GripperReachGraspInfoUR5(UR5RobotiqEnv):
 
         return np.linalg.norm(goal_a - goal_b, axis=-1)
 
-    def compute_reward(self, achieved_goal, desired_goal, info):
+    def reward_done_info(self, achieved_goal, desired_goal):
         reward = 0
-        done = False
         
         # Calculate distance to the target
         #desired goal
@@ -949,17 +935,37 @@ class GripperReachGraspInfoUR5(UR5RobotiqEnv):
         #achieved goal
         cube_real_pose         = achieved_goal#np.array(achieved_goal)  #for now, requests the only cube's pose
         #euclidean norm
-        euclidean_dist_3d      = self._distance_to_goal(destination_pose, cube_real_pose).reshape(-1)
+        euclidean_dist_3d      = np.absolute(self._distance_to_goal(destination_pose, cube_real_pose)).reshape(-1)
 
         # Reward base
-        reward = -1 * euclidean_dist_3d
+        reward = -1.0 * euclidean_dist_3d
         
         corrected_reward=np.array([100.0 if np.absolute(r)<=self.distance_threshold else r for r in reward], dtype='float32')
 
         if len(corrected_reward)==1:
             corrected_reward=corrected_reward[0]
 
-        return corrected_reward
+        if corrected_reward ==100.0 :
+            done=True
+            info = {
+            'is_success': True,
+            'final_status': 'success',
+            }
+        elif self.elapsed_steps >= self.max_episode_steps:
+            done=True
+            info = {
+            'is_success': True,
+            'final_status': 'max_steps_exceeded',
+            }
+
+        else:
+            done=False
+            info = {
+            'is_success': False,
+            'final_status': 'running',
+            }
+
+        return corrected_reward, done, info
 
 class GripperReachGraspInfoUR5Sim(GripperReachGraspInfoUR5, Simulation):
     #cmd = "roslaunch ur_robot_server ur5Robotiq_sim_robot_server.launch \
