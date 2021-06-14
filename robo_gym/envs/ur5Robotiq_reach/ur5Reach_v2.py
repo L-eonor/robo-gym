@@ -352,7 +352,7 @@ class UR5RobotiqEnv(gym.Env):
         angle_tolerance=0.001
         abs_max_angle=np.pi + angle_tolerance #+/-pi precision might fall off space limits
         #the gripper's orientation is fixed pointed down
-        max_gripper_pose=np.array([ 0.5, 0.11, 0.05])
+        max_gripper_pose=np.array([ abs_max_gripper_pose, 0.11, 0.1])
         min_gripper_pose=np.array([ 0.3, 0.09, 0.03])
 
         max_gripper_angle=[np.pi/2]
@@ -927,7 +927,7 @@ class GripperReachGraspInfoUR5_v2(UR5RobotiqEnv):
             'is_success': False,
             'final_status': 'max_steps_exceeded',
             }
-        elif cube_shift > self.cube_shift_max :
+        elif False:#cube_shift > self.cube_shift_max :
             done=True
             info = {
             'is_success': False,
