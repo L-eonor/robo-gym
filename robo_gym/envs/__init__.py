@@ -17,6 +17,7 @@ from robo_gym.envs.ur5Robotiq.ur5Robotiq import GraspObjectUR5Sim
 from robo_gym.envs.ur5Robotiq_reach.ur5Robotiq_reach_1joint import ReachObjectUR5Sim
 from robo_gym.envs.ur5Robotiq_reach.ur5Reach import GripperReachUR5Sim
 from robo_gym.envs.ur5Robotiq_reach.ur5Reach_graspInfo import GripperReachGraspInfoUR5Sim
+from robo_gym.envs.ur5Robotiq_reach.ur5Reach_v2 import GripperReachGraspInfoUR5Sim_v2
 from robo_gym.envs.ur5_pick_and_place.ur5Pick import GripperPickUR5Sim
 from robo_gym.envs.ur5Robotiq_reach.ur5Reach_always_open import GripperReachOpenUR5Sim
 from robo_gym.envs.ur5_pick_and_place.ur_pick_and_place import PickAndPlaceUR5Sim

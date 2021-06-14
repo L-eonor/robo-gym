@@ -94,6 +94,12 @@ register(
 )
 
 register(
+    id='GripperReachGraspInfoUR5Sim_v2-v0',
+    entry_point='robo_gym.envs:GripperReachGraspInfoUR5Sim_v2',
+    max_episode_steps=500
+)
+
+register(
     id='GripperPickUR5Sim-v0',
     entry_point='robo_gym.envs:GripperPickUR5Sim',
     max_episode_steps=500
