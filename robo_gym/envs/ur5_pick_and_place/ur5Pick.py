@@ -185,15 +185,21 @@ class UR5RobotiqEnv(gym.Env):
 
         # obs, reward, done, info
         obs = self._get_obs()
-        if not self.observation_space.contains(obs):
-            print(obs)
+        #if not self.observation_space.contains(obs):
+            #print(obs)
             #raise InvalidStateError()
 
         desired_goal= np.array(self.state.state["cubes_pose"][0, 1:4].reshape(-1) )
         achieved_goal= self.state.state["gripper_pose"]
 
         if joints_absolute is not None:
-            reward, done, info = self.reward_done_info(achieved_goal=achieved_goal, desired_goal=desired_goal)  
+            reward, done, info = self.reward_done_info(achieved_goal=achieved_goal, desired_goal=desired_goal)
+            if not self.observation_space.contains(obs):
+                done = True
+                info = {
+                'is_success': False,
+                'final_status': 'invalid state error, out of obs space',
+                }
         else:
             reward = -100.0
             done = True
