@@ -187,17 +187,8 @@ class UR5RobotiqEnv(gym.Env):
         obs = self._get_obs()
         if not self.observation_space.contains(obs):
             print(obs)
-            raise InvalidStateError()
+            #raise InvalidStateError()
 
-
-        #verifies if the gripper was correctly reseted
-        #if np.absolute(np.linalg.norm(self.state.state["gripper_pose"] - self.state.state["gripper_pose_gazebo"][0:3], axis=-1)) > self.gripper_error_threshold:
-        #    print("gripper threshold")
-        #    print(np.absolute(np.linalg.norm(self.state.state["gripper_pose"] - self.state.state["gripper_pose_gazebo"][0:3], axis=-1)))
-        #    raise RobotServerError("gripper")
-
-        #achieved_goal = np.array(self.state.state["cubes_pose"][0, 1:4].reshape(-1) )
-        #desired_goal  = np.array(self.state.state["destination_pose"][0:3].reshape(-1) )
         desired_goal= np.array(self.state.state["cubes_pose"][0, 1:4].reshape(-1) )
         achieved_goal= self.state.state["gripper_pose"]
 
@@ -387,8 +378,8 @@ class UR5RobotiqEnv(gym.Env):
         #min_gripper_pose=np.array([-abs_max_gripper_pose, -abs_max_gripper_pose, 0.02])#, -abs_max_angle, -abs_max_angle, -abs_max_angle]
         #max_gripper_pose=np.array([ 0.60, 0.2, 0.05])
         #min_gripper_pose=np.array([ 0.25, 0.0, 0.03])
-        max_gripper_pose=np.array([ 0.5, 0.11, 0.05])
-        min_gripper_pose=np.array([ 0.3, 0.09, 0.03])
+        max_gripper_pose=np.array([ 0.5, 0.15, 0.05])
+        min_gripper_pose=np.array([ 0.3, 0.05, 0.03])
 
         max_gripper_angle=[np.pi/2]
         min_gripper_angle=[0]
