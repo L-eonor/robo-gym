@@ -135,6 +135,7 @@ class UR5RobotiqEnv(gym.Env):
 
         #Get current state, update obs space with cubes and validate
         self.state, rs_state =self._get_current_state()
+        self.cubes_reset_pose = np.array(self.state.state["cubes_pose"][0, 1:4].reshape(-1))
 
         #verifies if the gripper was correctly reseted
         sim_to_vision_error=np.absolute(np.linalg.norm(self.state.state["gripper_pose_gazebo"][0:3] - reset_pose, axis=-1))
