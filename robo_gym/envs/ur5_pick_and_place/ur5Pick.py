@@ -938,7 +938,7 @@ class GripperPickUR5(UR5RobotiqEnv):
         euclidean_dist_3d      = np.absolute(self._distance_to_goal(destination_pose, cube_real_pose)).reshape(-1)
 
         # Reward base
-        reward = -1.0 * euclidean_dist_3d
+        reward = -1.0 * euclidean_dist_3d[0]
         cube_shift = np.absolute(self._distance_to_goal(self.cubes_reset_pose, np.array(self.state.state["cubes_pose"][0, 1:4].reshape(-1)))).reshape(-1)
 
         #reward for grasping
