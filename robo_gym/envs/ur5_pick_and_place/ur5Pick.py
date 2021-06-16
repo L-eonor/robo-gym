@@ -945,7 +945,8 @@ class GripperPickUR5(UR5RobotiqEnv):
         if self._is_grasping():
             if not self.has_reached:
                 self.has_reached=True
-                corrected_reward=np.array(250.0, dtype='float32')
+                #corrected_reward=np.array(250.0, dtype='float32')
+                corrected_reward=np.array(25.0, dtype='float32')
                 info = {
                 'is_success': True,
                 'final_status': 'Reaching+Picking',
@@ -963,7 +964,8 @@ class GripperPickUR5(UR5RobotiqEnv):
             
         #reward for reaching position
         elif (np.absolute(reward)<=self.distance_threshold) and (not self._is_grasping()) and (not self.has_reached):
-            corrected_reward=np.array(100.0, dtype='float32')
+            #corrected_reward=np.array(100.0, dtype='float32')
+            corrected_reward=np.array(10.0, dtype='float32')
             info = {
             'is_success': False,
             'final_status': 'Reaching',
