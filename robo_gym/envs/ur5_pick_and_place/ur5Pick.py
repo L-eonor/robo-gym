@@ -382,10 +382,6 @@ class UR5RobotiqEnv(gym.Env):
         angle_tolerance=0.001
         abs_max_angle=np.pi + angle_tolerance #+/-pi precision might fall off space limits
         #the gripper's orientation is fixed pointed down
-        #max_gripper_pose=np.array([ abs_max_gripper_pose,  abs_max_gripper_pose,  0.08])#,  abs_max_angle,  abs_max_angle,  abs_max_angle]
-        #min_gripper_pose=np.array([-abs_max_gripper_pose, -abs_max_gripper_pose, 0.02])#, -abs_max_angle, -abs_max_angle, -abs_max_angle]
-        #max_gripper_pose=np.array([ 0.60, 0.2, 0.05])
-        #min_gripper_pose=np.array([ 0.25, 0.0, 0.03])
         max_gripper_pose=np.array([ 0.5, 0.15, 0.05])
         min_gripper_pose=np.array([ 0.3, 0.05, 0.03])
 
@@ -946,13 +942,16 @@ class GripperPickUR5(UR5RobotiqEnv):
             if not self.has_reached:
                 self.has_reached=True
                 #corrected_reward=np.array(250.0, dtype='float32')
-                corrected_reward=np.array(25.0, dtype='float32')
+                #corrected_reward=np.array(25.0, dtype='float32')
+                corrected_reward=np.array(15.0, dtype='float32')
                 info = {
                 'is_success': True,
                 'final_status': 'Reaching+Picking',
                 }
             else:
-                corrected_reward=np.array(150.0, dtype='float32')
+                #corrected_reward=np.array(150.0, dtype='float32')
+                #corrected_reward=np.array(15.0, dtype='float32')
+                corrected_reward=np.array(10.0, dtype='float32')
                 info = {
                 'is_success': True,
                 'final_status': 'Picking',
@@ -965,7 +964,8 @@ class GripperPickUR5(UR5RobotiqEnv):
         #reward for reaching position
         elif (np.absolute(reward)<=self.distance_threshold) and (not self._is_grasping()) and (not self.has_reached):
             #corrected_reward=np.array(100.0, dtype='float32')
-            corrected_reward=np.array(10.0, dtype='float32')
+            #corrected_reward=np.array(10.0, dtype='float32')
+            corrected_reward=np.array(5.0, dtype='float32')
             info = {
             'is_success': False,
             'final_status': 'Reaching',
@@ -985,7 +985,7 @@ class GripperPickUR5(UR5RobotiqEnv):
 
             return reward, done, info
 
-        elif cube_shift > self.cube_shift_max :
+        elif False:#cube_shift > self.cube_shift_max :
             done=True
             info = {
             'is_success': False,
