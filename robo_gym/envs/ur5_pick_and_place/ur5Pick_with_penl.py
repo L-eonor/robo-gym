@@ -1004,7 +1004,7 @@ class GripperPickUR5(UR5RobotiqEnv):
             }
             if not self.has_picked:
                 early_close_pen= stats.norm.pdf(np.absolute(reward), self.distance_threshold, 0.2)/stats.norm.pdf(self.distance_threshold, self.distance_threshold, 0.2) if (self._is_gripper_closed() and (np.absolute(reward)>self.distance_threshold) ) else 0
-                reward+=early_close_pen
+                reward-=early_close_pen
 
             return reward, done, info
 
