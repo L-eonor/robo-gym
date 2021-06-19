@@ -104,6 +104,8 @@ class UR5RobotiqEnv(gym.Env):
         self.prev_base_reward = None
 
         self.destination_pose = [0]*3
+        self.has_reached=False
+        self.has_picked=False
         
         ##############################
         # Setting robot server state #
@@ -171,8 +173,6 @@ class UR5RobotiqEnv(gym.Env):
         
         obs, reward, done, info = self.step( action ) 
         self.elapsed_steps = 0
-        self.has_reached=False
-        self.has_picked=False
 
         return obs
 
