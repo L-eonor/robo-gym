@@ -111,6 +111,11 @@ register(
     max_episode_steps=500
 )
 
+register(
+    id='GripperMoveUR5Sim-v0',
+    entry_point='robo_gym.envs:GripperMoveUR5Sim',
+    max_episode_steps=500
+)
 
 ## UR10 Environments
 register(
