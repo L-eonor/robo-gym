@@ -117,6 +117,12 @@ register(
     max_episode_steps=500
 )
 
+register(
+    id='GripperMoveFixUR5Sim-v0',
+    entry_point='robo_gym.envs:GripperMoveFixUR5Sim',
+    max_episode_steps=500
+)
+
 ## UR10 Environments
 register(
     id='EndEffectorPositioningUR10Sim-v0',

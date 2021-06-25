@@ -23,3 +23,4 @@ from robo_gym.envs.ur5_pick_and_place.ur5Pick_with_penl import GripperPickPenUR5
 from robo_gym.envs.ur5Robotiq_reach.ur5Reach_always_open import GripperReachOpenUR5Sim
 from robo_gym.envs.ur5_pick_and_place.ur_pick_and_place import PickAndPlaceUR5Sim
 from robo_gym.envs.ur5_pick_and_place.ur5Move import GripperMoveUR5Sim
+from robo_gym.envs.ur5_pick_and_place.ur5Move_fixo import GripperMoveFixUR5Sim
