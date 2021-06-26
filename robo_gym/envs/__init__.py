@@ -26,3 +26,4 @@ from robo_gym.envs.ur5_pick_and_place.ur5Move import GripperMoveUR5Sim
 from robo_gym.envs.ur5_pick_and_place.ur5Move_fixo import GripperMoveFixUR5Sim
 from robo_gym.envs.ur5_pick_and_place.ur5Move_fixo_v2 import GripperMoveFixUR5Sim_v2
 from robo_gym.envs.ur5_pick_and_place.ur5Move_fixo_v3 import GripperMoveFixUR5Sim_v3
+from robo_gym.envs.ur5_pick_and_place.ur5Move_fixo_v4 import GripperMoveFixUR5Sim_v4
