@@ -915,13 +915,13 @@ class GripperMoveFixUR5(UR5RobotiqEnv):
                 self.has_reached=True
                 corrected_reward=np.array(15.0, dtype='float32')
                 info = {
-                'is_success': True,
+                'is_success': False,
                 'final_status': 'Reaching+Picking',
                 }
             else:
                 corrected_reward=np.array(10.0, dtype='float32')
                 info = {
-                'is_success': True,
+                'is_success': False,
                 'final_status': 'Picking',
                 }
             print("Picking....")

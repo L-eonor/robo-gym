@@ -893,7 +893,7 @@ class GripperMoveFixUR5(UR5RobotiqEnv):
 
         # Reward base
         if self.has_picked:
-            reward = -1.0 * cube_to_goal[0]
+            reward = -2.0 * cube_to_goal[0]
         else:
             reward = -1.0 * gripper_to_cube[0]
 
@@ -971,7 +971,7 @@ class GripperMoveFixUR5(UR5RobotiqEnv):
 
             return reward, done, info
 
-class GripperMoveFixUR5Sim_v2(GripperMoveFixUR5, Simulation):
+class GripperMoveFixUR5Sim_v3(GripperMoveFixUR5, Simulation):
 
     cmd = "roslaunch ur_robot_server ur5Robotiq_sim_robot_server.launch \
         max_velocity_scale_factor:=0.8 \
