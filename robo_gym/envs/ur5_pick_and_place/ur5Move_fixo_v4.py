@@ -900,7 +900,7 @@ class GripperMoveFixUR5(UR5RobotiqEnv):
 
 
         #reward for moving
-        if self.has_picked and (np.absolute(reward)<=self.distance_threshold):
+        if self.has_picked and (np.absolute(cube_to_goal[0])<=self.distance_threshold):
             corrected_reward=np.array(15.0, dtype='float32')
             info = {
             'is_success': True,
